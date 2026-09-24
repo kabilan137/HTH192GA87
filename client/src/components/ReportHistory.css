@@ -1,0 +1,103 @@
+.history-container {
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+.history-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.history-title {
+  flex: 1;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.history-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.history-skeleton {
+  padding: 20px 24px;
+}
+
+.history-empty {
+  text-align: center;
+  padding: 48px;
+}
+
+.history-empty h3 {
+  margin: 12px 0 6px;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.history-item:hover {
+  background: var(--bg-card-hover);
+  border-color: rgba(59, 130, 246, 0.3);
+  transform: translateX(2px);
+}
+
+.history-item-left {
+  flex-shrink: 0;
+}
+
+.history-risk-badge {
+  width: 50px;
+  height: 50px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 800;
+  border: 2px solid;
+}
+
+.history-item-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.history-item-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  flex-wrap: wrap;
+}
+
+.history-item-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}

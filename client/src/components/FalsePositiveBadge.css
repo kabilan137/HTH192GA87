@@ -1,0 +1,119 @@
+.fp-badge {
+  padding: 20px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fp-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+}
+
+.fp-rate-display {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.fp-rate-number {
+  font-size: 40px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  transition: color 0.5s ease;
+}
+
+.fp-rate-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Bar */
+.fp-bar-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fp-bar {
+  display: flex;
+  height: 8px;
+  background: var(--bg-secondary);
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.fp-bar-confirmed {
+  background: var(--accent-cyan);
+  transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.fp-bar-llmonly {
+  background: var(--accent-purple);
+  transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.fp-bar-legend {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.fp-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.fp-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.fp-legend-confirmed .fp-legend-dot { background: var(--accent-cyan); }
+.fp-legend-ai .fp-legend-dot { background: var(--accent-purple); }
+
+/* ALWAYS VISIBLE label */
+.fp-label-always-visible {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: var(--radius-md);
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* Source breakdown */
+.fp-source-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fp-source-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 8px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+}
+
+.fp-source-count {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}

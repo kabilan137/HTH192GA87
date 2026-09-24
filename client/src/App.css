@@ -1,0 +1,166 @@
+/* App Layout */
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-main {
+  flex: 1;
+  padding: 32px 0 80px;
+}
+
+/* Hero */
+.hero {
+  text-align: center;
+  padding: 60px 0 48px;
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-blue);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-bottom: 24px;
+}
+
+.hero-badge-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--accent-blue);
+  border-radius: 50%;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.hero-title {
+  font-size: clamp(40px, 6vw, 64px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  margin-bottom: 20px;
+  color: var(--text-primary);
+}
+
+.hero-gradient {
+  background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-purple) 60%, var(--accent-cyan) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.hero-subtitle {
+  font-size: 17px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin-bottom: 36px;
+  max-width: 580px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.hero-stats {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.hero-stat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* Analyzing overlay */
+.analyzing-overlay {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 60vh;
+  padding: 40px 0;
+}
+
+.analyzing-card {
+  max-width: 540px;
+  width: 100%;
+  text-align: center;
+  padding: 40px;
+}
+
+.analyzing-spinner {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.analyzing-pulse {
+  position: absolute;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: rgba(59, 130, 246, 0.1);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.analyzing-card h2 {
+  font-size: 22px;
+  margin-bottom: 8px;
+}
+
+.analyzing-pr-title {
+  color: var(--text-accent);
+  font-size: 14px;
+  font-weight: 500;
+  margin-top: 4px;
+}
+
+.analyzing-steps {
+  margin: 28px 0 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: left;
+}
+
+.analyzing-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--text-secondary);
+  animation: fadeInLeft 0.4s ease both;
+}
+
+.analyzing-step-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.analyzing-note {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 8px;
+}

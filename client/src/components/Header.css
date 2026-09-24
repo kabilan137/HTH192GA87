@@ -1,0 +1,106 @@
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(10, 14, 26, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+}
+
+.header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 64px;
+  gap: 16px;
+}
+
+.header-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--radius-md);
+  transition: opacity var(--transition);
+  flex-shrink: 0;
+}
+
+.header-logo:hover { opacity: 0.8; }
+
+.header-logo-icon {
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  box-shadow: 0 0 16px rgba(59, 130, 246, 0.3);
+}
+
+.header-logo-text {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.header-logo-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+.header-logo-ai {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent-blue);
+  background: rgba(59, 130, 246, 0.15);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.header-nav {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+
+.header-nav-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.header-nav-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--accent-blue);
+  border-radius: 50%;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.btn.active {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.4);
+  color: var(--accent-blue);
+}

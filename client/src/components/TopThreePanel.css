@@ -1,0 +1,136 @@
+.top3-panel {
+  background: linear-gradient(135deg, rgba(239,68,68,0.06) 0%, rgba(139,92,246,0.06) 100%);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+.top3-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.top3-header > .top3-icon {
+  font-size: 28px;
+  flex-shrink: 0;
+}
+
+.top3-title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.top3-subtitle {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.top3-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.top3-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-left: 4px solid;
+  border-radius: var(--radius-md);
+  transition: transform var(--transition);
+}
+
+.top3-item:hover {
+  transform: translateX(2px);
+}
+
+.top3-rank {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  min-width: 28px;
+  text-align: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.top3-icon-cat {
+  font-size: 18px;
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+
+.top3-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.top3-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.top3-location {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.top3-explanation {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 8px;
+}
+
+.top3-fix {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.top3-fix-label {
+  color: var(--low);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.top3-fix-text {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.top3-confidence {
+  text-align: center;
+  flex-shrink: 0;
+  min-width: 50px;
+}
+
+.top3-conf-num {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.top3-conf-label {
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
