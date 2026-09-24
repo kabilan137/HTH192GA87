@@ -83,4 +83,57 @@ router.get('/repos/:owner/:repo/commits', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/repos/:owner/:repo/branches
+ * Lists branches for the branch selector (active-only: pushed within 30 days).
+ */
+router.get('/repos/:owner/:repo/branches', async (req, res) => {
+  const { owner } = req.params;
+  const repo = req.params.repo.replace(/\.git$/, '');
+
+  try {
+    const token = process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
+    const branches = [];
+    let page = 1;
+    while (true) {
+      const r = await fetch(
+        `https://api.github.com/repos/${owner}/${repo}/branches?per_page=100&page=${page}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28',
+          },
+        }
+      );
+      if (!r.ok) throw new Error(`GitHub branches → ${r.status}`);
+      const page_data = await r.json();
+      branches.push(...page_data);
+      if (page_data.length < 100) break;
+      page++;
+    }
+
+    const LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
+    const cutoff = Date.now() - LOOKBACK_MS;
+
+    const normalized = branches
+      .filter((b) => {
+        const date = b.commit?.commit?.committer?.date || b.commit?.commit?.author?.date;
+        return date ? new Date(date).getTime() >= cutoff : true;
+      })
+      .map((b) => ({
+        name: b.name,
+        sha: b.commit?.sha,
+        lastPushedAt: b.commit?.commit?.committer?.date || b.commit?.commit?.author?.date,
+        isProtected: b.protected || false,
+      }));
+
+    res.json({ branches: normalized, count: normalized.length });
+  } catch (e) {
+    console.error(`❌ Failed to list branches: ${e.message}`);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 export default router;
+

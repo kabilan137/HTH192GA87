@@ -23,7 +23,7 @@ const issueSchema = new mongoose.Schema({
   confidence: { type: Number, min: 0, max: 1, required: true },
   source: {
     type: String,
-    enum: ['static+llm', 'llm-only', 'static-only', 'diff-overlap'], // diff-overlap = deterministic
+    enum: ['static+llm', 'llm-only', 'static-only', 'diff-overlap', 'branch-diff-overlap'],
     required: true,
   },
   explanation: { type: String, required: true },
@@ -38,12 +38,14 @@ const issueSchema = new mongoose.Schema({
   lineRangeOther:      { type: [Number] }, // [start, end]
   collisionType:       { type: String, enum: ['line-level', 'file-level'] },
   lastPushedAt:        { type: String },
+  siblingHasOpenPr:    { type: Boolean },
+  futureRiskTier:      { type: String, enum: ['high', 'medium', 'low'] },
 });
 
 const reportSchema = new mongoose.Schema({
   owner:     { type: String, required: true },
   repo:      { type: String, required: true },
-  pullNumber:{ type: Number, required: true },
+  pullNumber:{ type: Number }, // optional — may be null for branch-only analysis
   prTitle:   { type: String, required: true },
   prUrl:     { type: String },
   createdAt: { type: Date, default: Date.now },

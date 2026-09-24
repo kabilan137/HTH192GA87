@@ -15,7 +15,7 @@ export const IssueCategory = z.enum([
 
 export const IssueSeverity = z.enum(['critical', 'high', 'medium', 'low']);
 
-export const IssueSource = z.enum(['static+llm', 'llm-only', 'static-only', 'diff-overlap']);
+export const IssueSource = z.enum(['static+llm', 'llm-only', 'static-only', 'diff-overlap', 'branch-diff-overlap']);
 
 export const IssueSchema = z.object({
   file: z.string().describe('Relative path to the file containing the issue'),

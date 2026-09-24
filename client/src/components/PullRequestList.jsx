@@ -2,13 +2,20 @@ import { useState, useEffect } from 'react';
 import './PullRequestList.css';
 
 export default function PullRequestList({
-  owner, repo, onAnalyze, onConflictCheck, onBack,
+  owner, repo, onAnalyze, onConflictCheck, onBack, onAnalyzeBranch,
   analyzeError, conflictError, analyzing, conflictChecking, selectedPR
 }) {
   const [prs, setPrs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState('');
+
+  // Branch selector state
+  const [branches, setBranches] = useState([]);
+  const [branchesLoading, setBranchesLoading] = useState(false);
+  const [selectedBranch, setSelectedBranch] = useState('');
+  const [branchFilter, setBranchFilter] = useState('');
+  const [branchPanelOpen, setBranchPanelOpen] = useState(false);
 
   // Commit-history state — shown when there are no open PRs to prove MCP works
   const [commits, setCommits] = useState(null);
@@ -46,6 +53,16 @@ export default function PullRequestList({
         .finally(() => setCommitsLoading(false));
     }
   }, [loading, error, prs.length, owner, repo]);
+  // Fetch branches lazily when panel opens
+  useEffect(() => {
+    if (!branchPanelOpen || branches.length > 0) return;
+    setBranchesLoading(true);
+    fetch(`/api/repos/${owner}/${repo}/branches`)
+      .then((r) => r.json())
+      .then((data) => setBranches(data.branches || []))
+      .catch(() => {})
+      .finally(() => setBranchesLoading(false));
+  }, [branchPanelOpen, owner, repo, branches.length]);
 
   const filtered = prs.filter(
     (pr) =>
@@ -54,6 +71,7 @@ export default function PullRequestList({
       String(pr.number).includes(filter) ||
       (pr.user || '').toLowerCase().includes(filter.toLowerCase())
   );
+
 
   return (
     <div className="pr-list-container">
@@ -170,6 +188,23 @@ export default function PullRequestList({
         </div>
       </div>
 
+      {/* Branch Selector Panel — Step 22 */}
+      <BranchSelector
+        owner={owner}
+        repo={repo}
+        branches={branches}
+        branchesLoading={branchesLoading}
+        panelOpen={branchPanelOpen}
+        onToggle={() => setBranchPanelOpen((v) => !v)}
+        selectedBranch={selectedBranch}
+        onSelectBranch={setSelectedBranch}
+        branchFilter={branchFilter}
+        onBranchFilterChange={setBranchFilter}
+        onAnalyzeBranch={onAnalyzeBranch}
+        analyzing={analyzing}
+      />
+
+
       <div className="info-note warn-note mt-4">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, marginTop: '2px' }}>
           <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
@@ -180,6 +215,7 @@ export default function PullRequestList({
           Other file types (TypeScript, Python, etc.) will receive AI review only.
         </span>
       </div>
+
     </div>
   );
 }
@@ -395,6 +431,102 @@ function PRItem({ pr, onAnalyze, onConflictCheck, isAnalyzing, isConflictCheckin
           )}
         </button>
       </div>
+    </div>
+  );
+}
+
+// ─── Branch Selector Panel ────────────────────────────────────────────────────
+
+function BranchSelector({
+  branches, branchesLoading, panelOpen, onToggle,
+  selectedBranch, onSelectBranch, branchFilter, onBranchFilterChange,
+  onAnalyzeBranch, analyzing,
+}) {
+  const filtered = branches.filter((b) =>
+    !branchFilter || b.name.toLowerCase().includes(branchFilter.toLowerCase())
+  );
+
+  return (
+    <div className="card" style={{ marginTop: '16px', padding: 0, overflow: 'hidden' }} id="branch-selector-panel">
+      {/* Toggle header */}
+      <button
+        onClick={onToggle}
+        style={{
+          width: '100%', textAlign: 'left', padding: '14px 20px',
+          background: 'transparent', border: 'none', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--text-primary)',
+          fontSize: '14px', fontWeight: 600,
+        }}
+        id="branch-selector-toggle"
+      >
+        <span style={{ fontSize: '16px' }}>🌿</span>
+        <span style={{ flex: 1 }}>Analyze a Branch (no PR required)</span>
+        <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginRight: '8px' }}>
+          Run full analysis on any pushed branch
+        </span>
+        <span style={{ color: 'var(--text-muted)', transition: 'transform 0.2s', transform: panelOpen ? 'rotate(180deg)' : 'none' }}>▾</span>
+      </button>
+
+      {panelOpen && (
+        <div style={{ padding: '0 20px 20px', borderTop: '1px solid var(--border)' }}>
+          {branchesLoading && (
+            <div style={{ padding: '16px 0', color: 'var(--text-muted)', fontSize: '13px' }}>Loading branches…</div>
+          )}
+          {!branchesLoading && branches.length > 0 && (
+            <>
+              <div style={{ marginTop: '14px', marginBottom: '8px' }}>
+                <input
+                  id="branch-filter-input"
+                  type="text"
+                  placeholder="Filter branches…"
+                  value={branchFilter}
+                  onChange={(e) => onBranchFilterChange(e.target.value)}
+                  style={{
+                    width: '100%', padding: '7px 12px', borderRadius: '8px',
+                    border: '1px solid var(--border)', background: 'var(--bg-secondary)',
+                    color: 'var(--text-primary)', fontSize: '13px', outline: 'none',
+                  }}
+                />
+              </div>
+              <div style={{ maxHeight: '200px', overflowY: 'auto', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                {filtered.map((b) => (
+                  <div
+                    key={b.name}
+                    onClick={() => onSelectBranch(b.name)}
+                    style={{
+                      padding: '9px 14px', cursor: 'pointer', fontSize: '13px',
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      background: selectedBranch === b.name ? 'rgba(99,102,241,0.15)' : 'transparent',
+                      borderLeft: selectedBranch === b.name ? '3px solid var(--accent-blue)' : '3px solid transparent',
+                      color: selectedBranch === b.name ? 'var(--accent-blue)' : 'var(--text-primary)',
+                    }}
+                    id={`branch-option-${b.name.replace(/[^a-z0-9]/gi, '-')}`}
+                  >
+                    <span className="mono">{b.name}</span>
+                    {b.lastPushedAt && (
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                        {new Date(b.lastPushedAt).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <button
+                id="analyze-branch-btn"
+                className="btn btn-primary"
+                style={{ marginTop: '12px', width: '100%' }}
+                disabled={!selectedBranch || analyzing}
+                onClick={() => selectedBranch && onAnalyzeBranch && onAnalyzeBranch(selectedBranch)}
+              >
+                {analyzing ? 'Analyzing…' : `🔍 Analyze Branch${selectedBranch ? `: ${selectedBranch}` : ''}`}
+              </button>
+            </>
+          )}
+          {!branchesLoading && branches.length === 0 && (
+            <div style={{ padding: '16px 0', color: 'var(--text-muted)', fontSize: '13px' }}>No branches found.</div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

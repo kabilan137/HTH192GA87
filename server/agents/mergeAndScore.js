@@ -144,13 +144,14 @@ export function computeRiskScore(issues) {
  *
  * FPR = (llm-only issues) / (total non-deterministic issues) × 100
  *
- * NOTE: 'diff-overlap' issues are EXCLUDED from the FPR denominator because
- * they are deterministically detected from real diffs, not inferred by the LLM.
+ * NOTE: 'diff-overlap' and 'branch-diff-overlap' issues are EXCLUDED from the FPR denominator
+ * because they are deterministically detected from real diffs, not inferred by the LLM.
  */
 export function computeFalsePositiveRate(issues) {
   if (!issues || issues.length === 0) return 0;
-  // Only count issues that could be false positives (not ground-truth diff-overlap)
-  const countableIssues = issues.filter((i) => i.source !== 'diff-overlap');
+  // Only count issues that could be false positives (not ground-truth diff/branch-diff overlap)
+  const DETERMINISTIC_SOURCES = new Set(['diff-overlap', 'branch-diff-overlap']);
+  const countableIssues = issues.filter((i) => !DETERMINISTIC_SOURCES.has(i.source));
   if (countableIssues.length === 0) return 0;
   const llmOnly = countableIssues.filter((i) => i.source === 'llm-only').length;
   return Math.round((llmOnly / countableIssues.length) * 100);
@@ -190,7 +191,9 @@ export function computeReportData(eslintFindings, llmIssues, concurrentIssues = 
   const staticIssuesCount   = issues.filter((i) => i.source === 'static-only').length;
   const llmIssuesCount      = issues.filter((i) => i.source === 'llm-only').length;
   const combinedIssuesCount = issues.filter((i) => i.source === 'static+llm').length;
-  const concurrentModificationCount = issues.filter((i) => i.source === 'diff-overlap').length;
+  const concurrentModificationCount = issues.filter(
+    (i) => i.source === 'diff-overlap' || i.source === 'branch-diff-overlap'
+  ).length;
 
   return {
     issues,

@@ -1,6 +1,11 @@
 /**
  * POST /api/analyze
- * Full agentic pipeline: MCP → ESLint + ConcurrentRisk (parallel) → LLM → merge → save → return report
+ *
+ * Accepts:
+ *   { owner, repo, pullNumber }  — analyze a specific PR
+ *   { owner, repo, branch }      — analyze a branch directly (no PR required)
+ *
+ * Full agentic pipeline: GitHub data → ESLint + ConcurrentRisk (parallel) → LLM → merge → save → return
  */
 
 import { Router } from 'express';
@@ -22,165 +27,344 @@ import { Report } from '../models/Report.js';
 
 const router = Router();
 
-router.post('/analyze', async (req, res) => {
-  const { owner, repo, pullNumber } = req.body;
+// ─── Helper: get default branch for repo ─────────────────────────────────────
 
-  if (!owner || !repo || !pullNumber) {
-    return res.status(400).json({ error: 'owner, repo, and pullNumber are required' });
+async function getDefaultBranch(owner, repo) {
+  const token = process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+    },
+  });
+  if (!res.ok) throw new Error(`Could not fetch repo metadata: ${res.status}`);
+  const data = await res.json();
+  return data.default_branch || 'main';
+}
+
+// ─── Helper: fetch branch diff via compare endpoint ───────────────────────────
+
+async function fetchBranchDiffAndFiles(owner, repo, baseBranch, headBranch) {
+  const token = process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
+  const res = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/compare/${baseBranch}...${headBranch}`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+    }
+  );
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Compare ${baseBranch}...${headBranch} failed: ${res.status} ${body.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  // files[] from compare has same shape as PR files: { filename, patch, status, ... }
+  const files = data.files || [];
+  // Build a unified diff string from patches
+  const diff = files
+    .filter((f) => f.patch)
+    .map((f) => `--- a/${f.filename}\n+++ b/${f.filename}\n${f.patch}`)
+    .join('\n\n');
+  return { files, diff, aheadBy: data.ahead_by };
+}
+
+// ─── Helper: fetch file content from a specific ref ──────────────────────────
+
+async function fetchFileContentsForBranch(owner, repo, files, ref) {
+  const jsFiles = (files || []).filter((f) =>
+    /\.(js|jsx|mjs|cjs)$/i.test(f.filename || '')
+  );
+  const fileContents = {};
+  const fileContentArray = [];
+  await Promise.all(
+    jsFiles.map(async (f) => {
+      const filename = f.filename;
+      try {
+        const content = await getFileContents(owner, repo, filename, ref);
+        if (content) {
+          fileContents[filename] = content;
+          fileContentArray.push({ filename, content });
+        }
+      } catch (e) {
+        console.warn(`⚠️  Could not fetch content of ${filename}: ${e.message}`);
+      }
+    })
+  );
+  return { jsFiles, fileContents, fileContentArray };
+}
+
+// ─── Main route ───────────────────────────────────────────────────────────────
+
+router.post('/analyze', async (req, res) => {
+  const { owner, repo, pullNumber, branch } = req.body;
+
+  if (!owner || !repo) {
+    return res.status(400).json({ error: 'owner and repo are required' });
+  }
+  if (!pullNumber && !branch) {
+    return res.status(400).json({ error: 'Either pullNumber or branch is required' });
   }
 
-  const prNum = parseInt(pullNumber, 10);
-  if (isNaN(prNum)) {
+  const isBranchMode = !pullNumber && !!branch;
+  const prNum = pullNumber ? parseInt(pullNumber, 10) : null;
+  if (!isBranchMode && isNaN(prNum)) {
     return res.status(400).json({ error: 'pullNumber must be a number' });
   }
 
   try {
-    console.log(`\n🔍 Starting analysis for ${owner}/${repo}#${prNum}`);
-
-    // ── Step 4a: Initialize MCP and fetch PR data ─────────────────────────
-    let prDetail, diff, prFiles;
-
+    // ── Initialize MCP (best effort) ─────────────────────────────────────────
     try {
-      await getMCPClient(); // ensure MCP is ready (no-op if unavailable)
+      await getMCPClient();
     } catch (mcpErr) {
       console.warn('⚠️  MCP init failed, using REST API fallback:', mcpErr.message);
     }
 
-    try {
-      prDetail = await getPullRequest(owner, repo, prNum);
-    } catch (e) {
-      console.warn('PR detail via MCP failed, using REST:', e.message);
-      prDetail = await fetchPRDetailViaREST(owner, repo, prNum);
-    }
+    let prDetail, diff, prFiles, reviewedBranch, baseBranch, headSha, prTitle, nonJsCount;
 
-    try {
-      diff = await getPullRequestDiff(owner, repo, prNum);
-    } catch (e) {
-      console.warn('Diff via MCP failed, using REST:', e.message);
-      diff = await fetchDiffViaREST(owner, repo, prNum);
-    }
+    if (isBranchMode) {
+      // ── BRANCH MODE: no PR required ────────────────────────────────────────
+      console.log(`\n🔍 Starting branch analysis for ${owner}/${repo}@${branch}`);
 
-    try {
-      prFiles = await getPullRequestFiles(owner, repo, prNum);
-    } catch (e) {
-      console.warn('PR files via MCP failed, using REST:', e.message);
-      prFiles = await fetchPRFilesViaREST(owner, repo, prNum);
-    }
+      baseBranch = await getDefaultBranch(owner, repo);
+      reviewedBranch = branch;
 
-    const prTitle  = prDetail?.title || `PR #${prNum}`;
-    const headSha  = prDetail?.head?.sha;
+      const compareResult = await fetchBranchDiffAndFiles(owner, repo, baseBranch, branch);
+      prFiles = compareResult.files;
+      diff = compareResult.diff;
+      headSha = null; // branch tip — we'll use branch name for file fetching
 
-    console.log(`📄 PR: "${prTitle}" | ${prFiles.length} changed files`);
+      prTitle = `branch: ${branch}`;
+      prDetail = null;
 
-    // ── Step 4a cont: Fetch full content of each changed JS file ──────────
-    const jsFiles = (prFiles || []).filter((f) =>
-      /\.(js|jsx|mjs|cjs)$/i.test(f.filename || f.path || '')
-    );
+      console.log(`📄 Branch "${branch}" (${compareResult.aheadBy} commits ahead of ${baseBranch}) | ${prFiles.length} changed files`);
 
-    const nonJsCount = (prFiles?.length || 0) - jsFiles.length;
-    console.log(
-      `📁 ${jsFiles.length} JS file(s) to analyze${nonJsCount > 0 ? ` (${nonJsCount} non-JS files skipped by static analysis)` : ''}`
-    );
+      const jsFileObjs = prFiles.filter((f) =>
+        /\.(js|jsx|mjs|cjs)$/i.test(f.filename || '')
+      );
+      nonJsCount = prFiles.length - jsFileObjs.length;
 
-    const fileContents = {};
-    const fileContentArray = [];
-
-    await Promise.all(
-      jsFiles.map(async (f) => {
-        const filename = f.filename || f.path;
-        try {
-          const content = await getFileContents(owner, repo, filename, headSha);
-          if (content) {
-            fileContents[filename] = content;
-            fileContentArray.push({ filename, content });
+      const fileContents = {};
+      const fileContentArray = [];
+      await Promise.all(
+        jsFileObjs.map(async (f) => {
+          try {
+            // Use branch name as the ref for file content fetch
+            const content = await getFileContents(owner, repo, f.filename, branch);
+            if (content) {
+              fileContents[f.filename] = content;
+              fileContentArray.push({ filename: f.filename, content });
+            }
+          } catch (e) {
+            console.warn(`⚠️  Could not fetch ${f.filename}: ${e.message}`);
           }
-        } catch (e) {
-          console.warn(`⚠️  Could not fetch content of ${filename}: ${e.message}`);
-        }
-      })
-    );
+        })
+      );
 
-    // ── Step 4b: Run ESLint + Concurrent Risk check IN PARALLEL ───────────
-    console.log('🔧 Running ESLint static analysis + concurrent risk check (parallel)...');
+      // ── ESLint + ConcurrentRisk in parallel ──────────────────────────────
+      console.log('🔧 Running ESLint + concurrent risk check (parallel)...');
+      const [eslintFindings, collisions] = await Promise.all([
+        Promise.resolve(runESLintOnFiles(fileContentArray)),
+        detectConcurrentModificationRisk({
+          owner,
+          repo,
+          reviewedBranch: branch,
+          baseBranch,
+          prTitle,
+          reviewedPRFiles: prFiles,
+          diff,
+        }),
+      ]);
 
-    const [eslintFindings, collisions] = await Promise.all([
-      // ESLint — synchronous, wrapped in promise to run in parallel with concurrent risk
-      Promise.resolve(runESLintOnFiles(fileContentArray)),
+      console.log(`✅ ESLint: ${eslintFindings.length} finding(s)`);
+      const concurrentIssues = collisionsToIssues(collisions);
 
-      // Concurrent Modification Risk — async, runs fully in parallel
-      detectConcurrentModificationRisk({
+      // ── LLM Review ───────────────────────────────────────────────────────
+      const llmResult = await runCodeReviewAgent({
+        owner,
+        repo,
+        pullNumber: null,
+        prTitle,
+        diff: diff || '',
+        fileContents,
+        eslintFindings,
+      });
+
+      const llmIssues = llmResult.issues || [];
+      const reportData = computeReportData(eslintFindings, llmIssues, concurrentIssues);
+
+      console.log(`\n📊 Report Summary (branch mode):`);
+      console.log(`   Risk Score: ${reportData.riskScore}/100`);
+      console.log(`   Total Issues: ${reportData.totalIssues}`);
+      console.log(`   Concurrent Modifications: ${reportData.concurrentModificationCount}`);
+
+      const report = new Report({
+        owner,
+        repo,
+        pullNumber: null,
+        prTitle,
+        prUrl: null,
+        riskScore: reportData.riskScore,
+        falsePositiveRate: reportData.falsePositiveRate,
+        issues: reportData.issues,
+        topThreeIssueIds: reportData.topThreeIssueIds,
+        totalIssues: reportData.totalIssues,
+        staticIssuesCount: reportData.staticIssuesCount,
+        llmIssuesCount: reportData.llmIssuesCount,
+        combinedIssuesCount: reportData.combinedIssuesCount,
+        concurrentModificationCount: reportData.concurrentModificationCount,
+        analyzedFiles: jsFileObjs.map((f) => f.filename),
+        status: 'complete',
+      });
+      await report.save();
+      console.log(`✅ Report saved: ${report._id}`);
+
+      return res.json({
+        reportId: report._id,
+        report: report.toObject(),
+        llmSummary: llmResult.summary || '',
+        jsOnlyNote: nonJsCount > 0
+          ? `⚠️  Note: ${nonJsCount} non-JavaScript file(s) were skipped. Static analysis is JS-only in this prototype.`
+          : null,
+        concurrentRiskNote: reportData.concurrentModificationCount > 0
+          ? `⚠️  ${reportData.concurrentModificationCount} concurrent modification risk(s) detected across active branches in this repo.`
+          : null,
+      });
+
+    } else {
+      // ── PR MODE: existing pullNumber path ─────────────────────────────────
+      console.log(`\n🔍 Starting analysis for ${owner}/${repo}#${prNum}`);
+
+      try {
+        prDetail = await getPullRequest(owner, repo, prNum);
+      } catch (e) {
+        console.warn('PR detail via MCP failed, using REST:', e.message);
+        prDetail = await fetchPRDetailViaREST(owner, repo, prNum);
+      }
+
+      try {
+        diff = await getPullRequestDiff(owner, repo, prNum);
+      } catch (e) {
+        console.warn('Diff via MCP failed, using REST:', e.message);
+        diff = await fetchDiffViaREST(owner, repo, prNum);
+      }
+
+      try {
+        prFiles = await getPullRequestFiles(owner, repo, prNum);
+      } catch (e) {
+        console.warn('PR files via MCP failed, using REST:', e.message);
+        prFiles = await fetchPRFilesViaREST(owner, repo, prNum);
+      }
+
+      prTitle = prDetail?.title || `PR #${prNum}`;
+      headSha = prDetail?.head?.sha;
+      reviewedBranch = prDetail?.head?.ref || `pr-${prNum}`;
+      baseBranch = prDetail?.base?.ref || await getDefaultBranch(owner, repo);
+
+      console.log(`📄 PR: "${prTitle}" | ${prFiles.length} changed files`);
+
+      const jsFiles = (prFiles || []).filter((f) =>
+        /\.(js|jsx|mjs|cjs)$/i.test(f.filename || f.path || '')
+      );
+      nonJsCount = (prFiles?.length || 0) - jsFiles.length;
+      console.log(
+        `📁 ${jsFiles.length} JS file(s) to analyze${nonJsCount > 0 ? ` (${nonJsCount} non-JS files skipped)` : ''}`
+      );
+
+      const fileContents = {};
+      const fileContentArray = [];
+      await Promise.all(
+        jsFiles.map(async (f) => {
+          const filename = f.filename || f.path;
+          try {
+            const content = await getFileContents(owner, repo, filename, headSha);
+            if (content) {
+              fileContents[filename] = content;
+              fileContentArray.push({ filename, content });
+            }
+          } catch (e) {
+            console.warn(`⚠️  Could not fetch content of ${filename}: ${e.message}`);
+          }
+        })
+      );
+
+      // ── ESLint + ConcurrentRisk in parallel ──────────────────────────────
+      console.log('🔧 Running ESLint static analysis + concurrent risk check (parallel)...');
+      const [eslintFindings, collisions] = await Promise.all([
+        Promise.resolve(runESLintOnFiles(fileContentArray)),
+        detectConcurrentModificationRisk({
+          owner,
+          repo,
+          reviewedBranch,
+          baseBranch,
+          prTitle,
+          reviewedPRFiles: prFiles,
+          diff: diff || '',
+        }),
+      ]);
+
+      console.log(`✅ ESLint: ${eslintFindings.length} finding(s)`);
+      const concurrentIssues = collisionsToIssues(collisions);
+
+      // ── LLM Review ───────────────────────────────────────────────────────
+      const llmResult = await runCodeReviewAgent({
         owner,
         repo,
         pullNumber: prNum,
         prTitle,
-        reviewedPRFiles: prFiles,   // full file objects with .patch from GitHub API
         diff: diff || '',
-      }),
-    ]);
+        fileContents,
+        eslintFindings,
+      });
 
-    console.log(`✅ ESLint: ${eslintFindings.length} finding(s)`);
+      const llmIssues = llmResult.issues || [];
+      const reportData = computeReportData(eslintFindings, llmIssues, concurrentIssues);
 
-    // Convert collisions into issues shaped for the report
-    const concurrentIssues = collisionsToIssues(collisions);
+      console.log(`\n📊 Report Summary:`);
+      console.log(`   Risk Score: ${reportData.riskScore}/100`);
+      console.log(`   Total Issues: ${reportData.totalIssues}`);
+      console.log(`   False Positive Rate: ${reportData.falsePositiveRate}%`);
+      console.log(`   Concurrent Modifications: ${reportData.concurrentModificationCount}`);
+      console.log(`   Top 3 Issues: ${reportData.topThreeIssueIds.join(', ')}`);
 
-    // ── Step 4c–d: LLM Review ─────────────────────────────────────────────
-    const llmResult = await runCodeReviewAgent({
-      owner,
-      repo,
-      pullNumber: prNum,
-      prTitle,
-      diff: diff || '',
-      fileContents,
-      eslintFindings,
-    });
+      const report = new Report({
+        owner,
+        repo,
+        pullNumber: prNum,
+        prTitle,
+        prUrl: prDetail?.html_url,
+        riskScore: reportData.riskScore,
+        falsePositiveRate: reportData.falsePositiveRate,
+        issues: reportData.issues,
+        topThreeIssueIds: reportData.topThreeIssueIds,
+        totalIssues: reportData.totalIssues,
+        staticIssuesCount: reportData.staticIssuesCount,
+        llmIssuesCount: reportData.llmIssuesCount,
+        combinedIssuesCount: reportData.combinedIssuesCount,
+        concurrentModificationCount: reportData.concurrentModificationCount,
+        analyzedFiles: jsFiles.map((f) => f.filename || f.path),
+        status: 'complete',
+      });
 
-    const llmIssues = llmResult.issues || [];
+      await report.save();
+      console.log(`✅ Report saved: ${report._id}`);
 
-    // ── Step 4e–f: Merge, score, and compute report data ──────────────────
-    // concurrentIssues are passed separately — excluded from FPR calc
-    const reportData = computeReportData(eslintFindings, llmIssues, concurrentIssues);
+      return res.json({
+        reportId: report._id,
+        report: report.toObject(),
+        llmSummary: llmResult.summary || '',
+        jsOnlyNote: nonJsCount > 0
+          ? `⚠️  Note: ${nonJsCount} non-JavaScript file(s) were skipped. Static analysis is JS-only in this prototype.`
+          : null,
+        concurrentRiskNote: reportData.concurrentModificationCount > 0
+          ? `⚠️  ${reportData.concurrentModificationCount} concurrent modification risk(s) detected in active sibling branches.`
+          : null,
+      });
+    }
 
-    console.log(`\n📊 Report Summary:`);
-    console.log(`   Risk Score: ${reportData.riskScore}/100`);
-    console.log(`   Total Issues: ${reportData.totalIssues}`);
-    console.log(`   False Positive Rate: ${reportData.falsePositiveRate}%`);
-    console.log(`   Concurrent Modifications: ${reportData.concurrentModificationCount}`);
-    console.log(`   Top 3 Issues: ${reportData.topThreeIssueIds.join(', ')}`);
-
-    // ── Step 4g: Persist to MongoDB ───────────────────────────────────────
-    const report = new Report({
-      owner,
-      repo,
-      pullNumber: prNum,
-      prTitle,
-      prUrl: prDetail?.html_url,
-      riskScore:           reportData.riskScore,
-      falsePositiveRate:   reportData.falsePositiveRate,
-      issues:              reportData.issues,
-      topThreeIssueIds:    reportData.topThreeIssueIds,
-      totalIssues:         reportData.totalIssues,
-      staticIssuesCount:   reportData.staticIssuesCount,
-      llmIssuesCount:      reportData.llmIssuesCount,
-      combinedIssuesCount: reportData.combinedIssuesCount,
-      concurrentModificationCount: reportData.concurrentModificationCount,
-      analyzedFiles: jsFiles.map((f) => f.filename || f.path),
-      status: 'complete',
-    });
-
-    await report.save();
-    console.log(`✅ Report saved: ${report._id}`);
-
-    res.json({
-      reportId:   report._id,
-      report:     report.toObject(),
-      llmSummary: llmResult.summary || '',
-      jsOnlyNote: nonJsCount > 0
-        ? `⚠️  Note: ${nonJsCount} non-JavaScript file(s) were skipped. Static analysis is JS-only in this prototype.`
-        : null,
-      concurrentRiskNote: reportData.concurrentModificationCount > 0
-        ? `⚠️  ${reportData.concurrentModificationCount} concurrent modification risk(s) detected in sibling open PRs.`
-        : null,
-    });
   } catch (e) {
     console.error('❌ Analysis pipeline error:', e);
     res.status(500).json({ error: e.message, stack: e.stack });

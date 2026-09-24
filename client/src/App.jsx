@@ -65,7 +65,43 @@ export default function App() {
     }
   }, [repoInfo]);
 
+  // ── Branch analysis handler — no PR number required ──────────────────────
+  const handleAnalyzeBranch = useCallback(async (branchName) => {
+    if (!repoInfo) return;
+    setSelectedPR({ number: null, title: `branch: ${branchName}` });
+    setAnalyzing(true);
+    setAnalyzeError(null);
+    setReport(null);
+    setView('analyzing');
+
+    try {
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          owner: repoInfo.owner,
+          repo: repoInfo.repo,
+          branch: branchName,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Branch analysis failed');
+
+      setReport(data.report);
+      setLlmSummary(data.llmSummary || '');
+      setJsOnlyNote(data.jsOnlyNote || null);
+      setView('report');
+    } catch (e) {
+      setAnalyzeError(e.message);
+      setView('prs');
+    } finally {
+      setAnalyzing(false);
+    }
+  }, [repoInfo]);
+
   // ── NEW: Conflict Check handler ──────────────────────────────────────────
+
   const handleConflictCheck = useCallback(async (pr) => {
     if (!repoInfo) return;
     setSelectedPR(pr);
@@ -138,6 +174,7 @@ export default function App() {
                 repo={repoInfo.repo}
                 onAnalyze={handleAnalyze}
                 onConflictCheck={handleConflictCheck}
+                onAnalyzeBranch={handleAnalyzeBranch}
                 onBack={() => { setView('home'); setRepoInfo(null); }}
                 analyzeError={analyzeError}
                 conflictError={conflictError}
