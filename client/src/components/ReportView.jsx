@@ -3,6 +3,7 @@ import RiskGauge from './RiskGauge.jsx';
 import FalsePositiveBadge from './FalsePositiveBadge.jsx';
 import TopThreePanel from './TopThreePanel.jsx';
 import ConcurrentRiskPanel from './ConcurrentRiskPanel.jsx';
+import ReviewMemoryPanel from './ReviewMemoryPanel.jsx';
 import './ReportView.css';
 
 const CATEGORY_META = {
@@ -11,6 +12,7 @@ const CATEGORY_META = {
   'Performance Risk':               { color: 'perf',     icon: '⚡', label: 'Performance Risk' },
   'Code Smell - Stylistic':         { color: 'style',    icon: '✨', label: 'Code Smell — Stylistic' },
   'Concurrent Modification Risk':   { color: 'concurrent', icon: '🔀', label: 'Concurrent Modification Risk' },
+  'Known Pattern - Previously Flagged': { color: 'memory', icon: '🧠', label: 'Known Pattern — Previously Flagged' },
 };
 
 const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
@@ -130,6 +132,9 @@ export default function ReportView({ report, llmSummary, jsOnlyNote, onBack, onN
       {/* Concurrent Modification Risk */}
       <ConcurrentRiskPanel issues={issues} />
 
+      {/* Review Memory / Precedent Incidents */}
+      <ReviewMemoryPanel issues={issues} owner={report.owner} repo={report.repo} />
+
       {/* Full Issue List */}
       <div className="report-issues-section">
         <div className="report-issues-header">
@@ -139,6 +144,7 @@ export default function ReportView({ report, llmSummary, jsOnlyNote, onBack, onN
             <span className="badge badge-security">🔒 Security</span>
             <span className="badge badge-perf">⚡ Performance</span>
             <span className="badge badge-style">✨ Stylistic</span>
+            <span className="badge badge-medium">🧠 Known Pattern</span>
           </div>
         </div>
 

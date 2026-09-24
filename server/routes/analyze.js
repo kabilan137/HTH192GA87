@@ -22,6 +22,7 @@ import { getMCPClient } from '../mcp/mcpClient.js';
 import { runESLintOnFiles } from '../staticAnalysis/eslintRunner.js';
 import { runCodeReviewAgent } from '../agents/reviewAgent.js';
 import { detectConcurrentModificationRisk, collisionsToIssues } from '../agents/concurrentRisk.js';
+import { retrieveReviewMemoryMatches, reviewMemoryIssuesToIssues } from '../agents/reviewRetrieval.js';
 import { computeReportData } from '../agents/mergeAndScore.js';
 import { Report } from '../models/Report.js';
 
@@ -164,9 +165,9 @@ router.post('/analyze', async (req, res) => {
         })
       );
 
-      // ── ESLint + ConcurrentRisk in parallel ──────────────────────────────
-      console.log('🔧 Running ESLint + concurrent risk check (parallel)...');
-      const [eslintFindings, collisions] = await Promise.all([
+      // ── ESLint + ConcurrentRisk + ReviewMemory in parallel ──────────────
+      console.log('🔧 Running ESLint + concurrent risk check + review memory retrieval (parallel)...');
+      const [eslintFindings, collisions, rawMemoryMatches] = await Promise.all([
         Promise.resolve(runESLintOnFiles(fileContentArray)),
         detectConcurrentModificationRisk({
           owner,
@@ -177,10 +178,17 @@ router.post('/analyze', async (req, res) => {
           reviewedPRFiles: prFiles,
           diff,
         }),
+        retrieveReviewMemoryMatches({
+          owner,
+          repo,
+          reviewedPRFiles: prFiles,
+        }),
       ]);
 
       console.log(`✅ ESLint: ${eslintFindings.length} finding(s)`);
       const concurrentIssues = collisionsToIssues(collisions);
+      const reviewMemoryIssues = reviewMemoryIssuesToIssues(rawMemoryMatches);
+      console.log(`✅ Review Memory: ${reviewMemoryIssues.length} issue(s) generated`);
 
       // ── LLM Review ───────────────────────────────────────────────────────
       const llmResult = await runCodeReviewAgent({
@@ -194,12 +202,13 @@ router.post('/analyze', async (req, res) => {
       });
 
       const llmIssues = llmResult.issues || [];
-      const reportData = computeReportData(eslintFindings, llmIssues, concurrentIssues);
+      const reportData = computeReportData(eslintFindings, llmIssues, concurrentIssues, reviewMemoryIssues);
 
       console.log(`\n📊 Report Summary (branch mode):`);
       console.log(`   Risk Score: ${reportData.riskScore}/100`);
       console.log(`   Total Issues: ${reportData.totalIssues}`);
       console.log(`   Concurrent Modifications: ${reportData.concurrentModificationCount}`);
+      console.log(`   Review Memory Precedents: ${reportData.reviewMemoryCount}`);
 
       const report = new Report({
         owner,
@@ -216,6 +225,7 @@ router.post('/analyze', async (req, res) => {
         llmIssuesCount: reportData.llmIssuesCount,
         combinedIssuesCount: reportData.combinedIssuesCount,
         concurrentModificationCount: reportData.concurrentModificationCount,
+        reviewMemoryCount: reportData.reviewMemoryCount,
         analyzedFiles: jsFileObjs.map((f) => f.filename),
         status: 'complete',
       });
@@ -231,6 +241,9 @@ router.post('/analyze', async (req, res) => {
           : null,
         concurrentRiskNote: reportData.concurrentModificationCount > 0
           ? `⚠️  ${reportData.concurrentModificationCount} concurrent modification risk(s) detected across active branches in this repo.`
+          : null,
+        reviewMemoryNote: reportData.reviewMemoryCount > 0
+          ? `💡 ${reportData.reviewMemoryCount} known issue pattern(s) matched against historical resolved PR reviews.`
           : null,
       });
 
@@ -291,9 +304,9 @@ router.post('/analyze', async (req, res) => {
         })
       );
 
-      // ── ESLint + ConcurrentRisk in parallel ──────────────────────────────
-      console.log('🔧 Running ESLint static analysis + concurrent risk check (parallel)...');
-      const [eslintFindings, collisions] = await Promise.all([
+      // ── ESLint + ConcurrentRisk + ReviewMemory in parallel ──────────────
+      console.log('🔧 Running ESLint static analysis + concurrent risk check + review memory retrieval (parallel)...');
+      const [eslintFindings, collisions, rawMemoryMatches] = await Promise.all([
         Promise.resolve(runESLintOnFiles(fileContentArray)),
         detectConcurrentModificationRisk({
           owner,
@@ -304,10 +317,17 @@ router.post('/analyze', async (req, res) => {
           reviewedPRFiles: prFiles,
           diff: diff || '',
         }),
+        retrieveReviewMemoryMatches({
+          owner,
+          repo,
+          reviewedPRFiles: prFiles,
+        }),
       ]);
 
       console.log(`✅ ESLint: ${eslintFindings.length} finding(s)`);
       const concurrentIssues = collisionsToIssues(collisions);
+      const reviewMemoryIssues = reviewMemoryIssuesToIssues(rawMemoryMatches);
+      console.log(`✅ Review Memory: ${reviewMemoryIssues.length} issue(s) generated`);
 
       // ── LLM Review ───────────────────────────────────────────────────────
       const llmResult = await runCodeReviewAgent({
@@ -321,13 +341,14 @@ router.post('/analyze', async (req, res) => {
       });
 
       const llmIssues = llmResult.issues || [];
-      const reportData = computeReportData(eslintFindings, llmIssues, concurrentIssues);
+      const reportData = computeReportData(eslintFindings, llmIssues, concurrentIssues, reviewMemoryIssues);
 
       console.log(`\n📊 Report Summary:`);
       console.log(`   Risk Score: ${reportData.riskScore}/100`);
       console.log(`   Total Issues: ${reportData.totalIssues}`);
       console.log(`   False Positive Rate: ${reportData.falsePositiveRate}%`);
       console.log(`   Concurrent Modifications: ${reportData.concurrentModificationCount}`);
+      console.log(`   Review Memory Precedents: ${reportData.reviewMemoryCount}`);
       console.log(`   Top 3 Issues: ${reportData.topThreeIssueIds.join(', ')}`);
 
       const report = new Report({
@@ -345,6 +366,7 @@ router.post('/analyze', async (req, res) => {
         llmIssuesCount: reportData.llmIssuesCount,
         combinedIssuesCount: reportData.combinedIssuesCount,
         concurrentModificationCount: reportData.concurrentModificationCount,
+        reviewMemoryCount: reportData.reviewMemoryCount,
         analyzedFiles: jsFiles.map((f) => f.filename || f.path),
         status: 'complete',
       });
@@ -361,6 +383,9 @@ router.post('/analyze', async (req, res) => {
           : null,
         concurrentRiskNote: reportData.concurrentModificationCount > 0
           ? `⚠️  ${reportData.concurrentModificationCount} concurrent modification risk(s) detected in active sibling branches.`
+          : null,
+        reviewMemoryNote: reportData.reviewMemoryCount > 0
+          ? `💡 ${reportData.reviewMemoryCount} known issue pattern(s) matched against historical resolved PR reviews.`
           : null,
       });
     }

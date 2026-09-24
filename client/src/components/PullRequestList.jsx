@@ -23,6 +23,32 @@ export default function PullRequestList({
   const [commitsError, setCommitsError] = useState(null);
   const [commitsSource, setCommitsSource] = useState(null); // 'mcp' | 'rest'
 
+  // Review Memory seeding state
+  const [importingHistory, setImportingHistory] = useState(false);
+  const [importHistoryResult, setImportHistoryResult] = useState(null);
+
+  const handleImportHistory = async () => {
+    if (!owner || !repo || importingHistory) return;
+    setImportingHistory(true);
+    setImportHistoryResult(null);
+    try {
+      const res = await fetch(`/api/repos/${owner}/${repo}/import-history`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limit: 20 }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setImportHistoryResult(
+        data.message || `Imported ${data.imported} incident(s) from the last ${data.total || 20} merged PR(s).`
+      );
+    } catch (e) {
+      setImportHistoryResult(`Import failed: ${e.message}`);
+    } finally {
+      setImportingHistory(false);
+    }
+  };
+
   // Fetch open PRs
   useEffect(() => {
     setLoading(true);
@@ -91,12 +117,58 @@ export default function PullRequestList({
       </div>
 
       <div className="card pr-list-card">
-        <div className="pr-list-top">
-          <h2>Open Pull Requests</h2>
-          {!loading && !error && (
-            <div className="pr-count-badge">{prs.length} open</div>
-          )}
+        <div className="pr-list-top" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <h2>Open Pull Requests</h2>
+            {!loading && !error && (
+              <div className="pr-count-badge">{prs.length} open</div>
+            )}
+          </div>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={handleImportHistory}
+            disabled={importingHistory}
+            id="pr-list-import-history-btn"
+            title="Import resolved review comments from merged PRs as searchable institutional memory"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+          >
+            {importingHistory ? (
+              <>
+                <span className="spinner-border spinner-border-sm" />
+                Importing PR history...
+              </>
+            ) : (
+              <>
+                <span>🧠</span> Import PR history
+              </>
+            )}
+          </button>
         </div>
+
+        {importHistoryResult && (
+          <div
+            style={{
+              padding: '8px 14px',
+              margin: '12px 0',
+              borderRadius: '8px',
+              fontSize: '12px',
+              background: 'rgba(59, 130, 246, 0.1)',
+              border: '1px solid rgba(59, 130, 246, 0.3)',
+              color: '#60a5fa',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <span>{importHistoryResult}</span>
+            <button
+              style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}
+              onClick={() => setImportHistoryResult(null)}
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {!loading && !error && prs.length > 0 && (
           <div className="pr-filter">

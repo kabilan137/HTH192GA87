@@ -9,6 +9,8 @@
 import { Router } from 'express';
 import { listOpenPullRequests, listCommits } from '../mcp/githubTools.js';
 import { isMCPAvailable } from '../mcp/mcpClient.js';
+import { importReviewHistory } from '../agents/reviewMemory.js';
+import { Incident } from '../models/Incident.js';
 
 const router = Router();
 
@@ -131,6 +133,52 @@ router.get('/repos/:owner/:repo/branches', async (req, res) => {
     res.json({ branches: normalized, count: normalized.length });
   } catch (e) {
     console.error(`❌ Failed to list branches: ${e.message}`);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * POST /api/repos/:owner/:repo/import-history
+ * Scans the last N merged PRs (default 20) and imports resolved review threads as Incident memories.
+ */
+router.post('/repos/:owner/:repo/import-history', async (req, res) => {
+  const { owner } = req.params;
+  const repo = req.params.repo.replace(/\.git$/, '');
+  const limit = parseInt(req.body?.limit || req.query?.limit || '20', 10);
+
+  try {
+    const result = await importReviewHistory(owner, repo, limit);
+    res.json({
+      success: true,
+      owner,
+      repo,
+      ...result,
+      message: `Imported ${result.imported} incident(s) from the last ${result.total || limit} merged PR(s).`,
+    });
+  } catch (e) {
+    console.error(`❌ Failed to import review history: ${e.message}`);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * GET /api/repos/:owner/:repo/incidents
+ * Returns stored incidents for this repo (used for empty-state check & counts).
+ */
+router.get('/repos/:owner/:repo/incidents', async (req, res) => {
+  const { owner } = req.params;
+  const repo = req.params.repo.replace(/\.git$/, '');
+
+  try {
+    const incidents = await Incident.find({ owner, repo }).sort({ createdAt: -1 }).lean();
+    res.json({
+      owner,
+      repo,
+      incidents,
+      count: incidents.length,
+    });
+  } catch (e) {
+    console.error(`❌ Failed to fetch incidents: ${e.message}`);
     res.status(500).json({ error: e.message });
   }
 });

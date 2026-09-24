@@ -11,7 +11,8 @@ const issueSchema = new mongoose.Schema({
       'Security Vulnerability',
       'Performance Risk',
       'Code Smell - Stylistic',
-      'Concurrent Modification Risk',   // Step E — new category
+      'Concurrent Modification Risk',
+      'Known Pattern - Previously Flagged',
     ],
     required: true,
   },
@@ -23,7 +24,7 @@ const issueSchema = new mongoose.Schema({
   confidence: { type: Number, min: 0, max: 1, required: true },
   source: {
     type: String,
-    enum: ['static+llm', 'llm-only', 'static-only', 'diff-overlap', 'branch-diff-overlap'],
+    enum: ['static+llm', 'llm-only', 'static-only', 'diff-overlap', 'branch-diff-overlap', 'review-history-match'],
     required: true,
   },
   explanation: { type: String, required: true },
@@ -40,6 +41,12 @@ const issueSchema = new mongoose.Schema({
   lastPushedAt:        { type: String },
   siblingHasOpenPr:    { type: Boolean },
   futureRiskTier:      { type: String, enum: ['high', 'medium', 'low'] },
+
+  // ── Known Pattern fields (populated only for review-history-match) ──
+  matchedIncidentId:    { type: String },
+  matchedPrNumber:      { type: Number },
+  matchedReviewerLogin: { type: String },
+  similarityScore:      { type: Number, min: 0, max: 1 },
 });
 
 const reportSchema = new mongoose.Schema({
@@ -60,6 +67,9 @@ const reportSchema = new mongoose.Schema({
 
   // ── Step F — Concurrent Modification Risk summary ──
   concurrentModificationCount: { type: Number, default: 0 },
+
+  // ── Step G — Review Memory summary ──
+  reviewMemoryCount: { type: Number, default: 0 },
 
   analyzedFiles: [{ type: String }],
   status: { type: String, enum: ['pending', 'complete', 'error'], default: 'complete' },

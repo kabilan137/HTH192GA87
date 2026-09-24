@@ -10,13 +10,14 @@
 
 import { randomUUID } from 'crypto';
 
-// Category weights — concurrent risk weighted by collision type
+// Category weights
 const CATEGORY_WEIGHTS = {
-  'Security Vulnerability':    10,
-  'Bug - Certain':              7,
-  'Concurrent Modification Risk': 6, // line-level; file-level uses 2 (applied below)
-  'Performance Risk':           4,
-  'Code Smell - Stylistic':     1,
+  'Security Vulnerability':          10,
+  'Bug - Certain':                    7,
+  'Concurrent Modification Risk':     6, // line-level; file-level uses 2 (applied below)
+  'Performance Risk':                 4,
+  'Known Pattern - Previously Flagged': 3, // probabilistic — counted in FPR
+  'Code Smell - Stylistic':           1,
 };
 
 // For concurrent risk, use collisionType to pick the right weight
@@ -146,15 +147,20 @@ export function computeRiskScore(issues) {
  *
  * NOTE: 'diff-overlap' and 'branch-diff-overlap' issues are EXCLUDED from the FPR denominator
  * because they are deterministically detected from real diffs, not inferred by the LLM.
+ * 'review-history-match' IS included — it is a probabilistic similarity match, not a deterministic
+ * finding, so wrong matches are real false positives that must be counted.
  */
 export function computeFalsePositiveRate(issues) {
   if (!issues || issues.length === 0) return 0;
-  // Only count issues that could be false positives (not ground-truth diff/branch-diff overlap)
+  // Exclude only deterministic sources from FPR denominator
   const DETERMINISTIC_SOURCES = new Set(['diff-overlap', 'branch-diff-overlap']);
   const countableIssues = issues.filter((i) => !DETERMINISTIC_SOURCES.has(i.source));
   if (countableIssues.length === 0) return 0;
-  const llmOnly = countableIssues.filter((i) => i.source === 'llm-only').length;
-  return Math.round((llmOnly / countableIssues.length) * 100);
+  // llm-only AND review-history-match are both unconfirmed-by-static-analysis
+  const unconfirmed = countableIssues.filter(
+    (i) => i.source === 'llm-only' || i.source === 'review-history-match'
+  ).length;
+  return Math.round((unconfirmed / countableIssues.length) * 100);
 }
 
 /**
@@ -178,14 +184,14 @@ export function selectTopThreeIssues(issues) {
 
 /**
  * Full pipeline: merge, score, and produce final report data.
- * Accepts optional concurrent-risk issues (already formatted, source='diff-overlap').
+ * Accepts optional concurrent-risk issues and review-memory issues.
  */
-export function computeReportData(eslintFindings, llmIssues, concurrentIssues = []) {
+export function computeReportData(eslintFindings, llmIssues, concurrentIssues = [], reviewMemoryIssues = []) {
   const baseIssues = mergeIssues(eslintFindings, llmIssues);
-  const issues = [...baseIssues, ...concurrentIssues];
+  const issues = [...baseIssues, ...concurrentIssues, ...reviewMemoryIssues];
 
   const riskScore = computeRiskScore(issues);
-  const falsePositiveRate = computeFalsePositiveRate(issues); // excludes diff-overlap
+  const falsePositiveRate = computeFalsePositiveRate(issues);
   const topThreeIssueIds = selectTopThreeIssues(issues);
 
   const staticIssuesCount   = issues.filter((i) => i.source === 'static-only').length;
@@ -194,6 +200,7 @@ export function computeReportData(eslintFindings, llmIssues, concurrentIssues = 
   const concurrentModificationCount = issues.filter(
     (i) => i.source === 'diff-overlap' || i.source === 'branch-diff-overlap'
   ).length;
+  const reviewMemoryCount = issues.filter((i) => i.source === 'review-history-match').length;
 
   return {
     issues,
@@ -205,5 +212,6 @@ export function computeReportData(eslintFindings, llmIssues, concurrentIssues = 
     llmIssuesCount,
     combinedIssuesCount,
     concurrentModificationCount,
+    reviewMemoryCount,
   };
 }

@@ -14,14 +14,16 @@ CodeGuard AI is a full-stack hackathon MVP that scans GitHub pull requests for b
 - **JS-Only Static Analysis**: ESLint runs on `.js`/`.jsx` files only (prototype limitation — clearly labeled in UI)
 - **Concurrent Modification Risk**: Compares the reviewed branch against ALL active sibling branches (not just those with open PRs). Detects line-range overlaps via the GitHub compare endpoint — no AST analysis, heuristic only. Surfaces a `futureRiskTier` (High/Medium/Low) and "No PR yet" vs "Open PR" badge per collision.
 - **Branch-Mode Analysis**: Analyze any pushed branch directly (no PR required) via `POST /api/analyze { owner, repo, branch }`. Full ESLint + LLM + concurrent-risk pipeline runs identically to PR mode.
+- **Review Memory & Institutional Precedents**: Ingests resolved review comment threads from merged PRs via GitHub GraphQL as stored "incidents". When analyzing new code changes, embeds diff hunks and searches for similar past problems; if a match exceeds the similarity threshold (0.82), generates a grounded suggested fix referencing past PRs and reviewers before human review.
 
 ## 📋 Prerequisites
 
 - Node.js 22+ (for `--env-file` support)
 - MongoDB running locally or a MongoDB Atlas URI
 - Docker (for the GitHub MCP server)
-- An Anthropic API key
+- An OpenRouter or Anthropic API key
 - A GitHub Personal Access Token (with `repo` read scope)
+- `VOYAGE_API_KEY` (*optional* — for Voyage AI code embeddings; falls back gracefully to MongoDB text index if not provided)
 
 ## 🚀 Quick Start
 
@@ -89,6 +91,8 @@ Open `http://localhost:5173` in your browser.
 | GET | `/api/repos/:owner/:repo/pulls` | List open PRs for a repo |
 | GET | `/api/repos/:owner/:repo/branches` | List branches (active within 30 days) |
 | GET | `/api/repos/:owner/:repo/commits` | Recent commit history |
+| POST | `/api/repos/:owner/:repo/import-history` | Ingest resolved review comment threads from merged PRs (seeding step) |
+| GET | `/api/repos/:owner/:repo/incidents` | Query stored review incidents for a repo |
 | POST | `/api/analyze` | Run full analysis pipeline (PR or branch mode) |
 | POST | `/api/conflict-check` | Deep merge-conflict analysis via Claude |
 | GET | `/api/reports` | List all past reports |
@@ -194,23 +198,28 @@ Each issue in a report:
 {
   file: string,          // relative path
   line: number,          // exact line number
-  category: 'Bug - Certain' | 'Security Vulnerability' | 'Performance Risk' | 'Code Smell - Stylistic' | 'Concurrent Modification Risk',
+  category: 'Bug - Certain' | 'Security Vulnerability' | 'Performance Risk' | 'Code Smell - Stylistic' | 'Concurrent Modification Risk' | 'Known Pattern - Previously Flagged',
   severity: 'critical' | 'high' | 'medium' | 'low',
   confidence: number,    // 0.0 to 1.0
-  source: 'static+llm' | 'llm-only' | 'static-only' | 'branch-diff-overlap',
+  source: 'static+llm' | 'llm-only' | 'static-only' | 'branch-diff-overlap' | 'review-history-match',
   explanation: string,
   suggestedFix: string,
   // Concurrent Modification Risk fields (only present on that category):
-  conflictingBranch: string,
-  conflictingAuthor: string,
-  conflictingPRNumber: number | null,   // null when sibling has no PR yet
-  conflictingPRTitle: string | null,
-  lineRangeSelf: [number, number],
-  lineRangeOther: [number, number],
-  collisionType: 'line-level' | 'file-level',
-  futureRiskTier: 'high' | 'medium' | 'low',
-  siblingHasOpenPr: boolean,
-  lastPushedAt: string,
+  conflictingBranch?: string,
+  conflictingAuthor?: string,
+  conflictingPRNumber?: number | null,   // null when sibling has no PR yet
+  conflictingPRTitle?: string | null,
+  lineRangeSelf?: [number, number],
+  lineRangeOther?: [number, number],
+  collisionType?: 'line-level' | 'file-level',
+  futureRiskTier?: 'high' | 'medium' | 'low',
+  siblingHasOpenPr?: boolean,
+  lastPushedAt?: string,
+  // Known Pattern fields (only present on review-history-match category):
+  matchedIncidentId?: string,
+  matchedPrNumber?: number,
+  matchedReviewerLogin?: string,
+  similarityScore?: number,
 }
 ```
 
@@ -240,3 +249,39 @@ GET /repos/{owner}/{repo}/compare/{base}...{branch}
 | `low` | File-level collision AND older than 3 days |
 
 **Caveats:** Heuristic only — line-range overlap ±3 lines from real unified diffs, not AST-level. `branch-diff-overlap` issues are excluded from the FPR denominator (deterministic, not LLM inference).
+
+## 🧠 Review Memory (Institutional Precedents)
+
+A two-part system that captures resolved review comment threads from merged PRs and matches new incoming changes against team history:
+
+1. **Ingestion (Background / Manual Trigger)**: Scans merged PRs via GitHub GraphQL (`reviewThreads`), extracts resolved comment threads (diff hunk, reviewer comment, merge-commit resolution), computes embeddings on the problem side (`problemSnippet + "\n" + reviewerComment`), and stores them in the `Incident` collection.
+2. **Retrieval (Per-Analysis)**: During branch/PR analysis, extracts changed diff hunks, computes their embeddings (or keyword search), and finds similar historical incidents in the same repo. If cosine similarity meets or exceeds `SIMILARITY_THRESHOLD`, Claude synthesizes a grounded fix tailored to the current code, citing the precedent PR and reviewer.
+
+### Seeding Step (Required First Action Per Repo)
+A fresh repo starts with zero stored review incidents. Before review retrieval can match anything, you must seed history:
+- **UI Trigger**: Click the **"Import PR history"** button in the open PRs list or in the Review Memory panel on any report.
+- **API Trigger**:
+  ```bash
+  curl -X POST http://localhost:3001/api/repos/:owner/:repo/import-history \
+    -H "Content-Type: application/json" \
+    -d '{"limit": 20}'
+  ```
+This imports up to `N` (default 20) merged PRs, extracting every resolved review thread into MongoDB.
+
+### Embedding Model & Fallback Behavior
+- **Primary Provider**: Voyage AI (`voyage-code-2`) via `@langchain/community`'s `VoyageEmbeddings`, configured with `VOYAGE_API_KEY` in `.env`.
+- **Graceful Fallback**: If `VOYAGE_API_KEY` is not set, CodeGuard AI does **not crash**. It logs a warning (`⚠️ VOYAGE_API_KEY is not set. Falling back gracefully to keyword/text-index similarity`) and utilizes MongoDB text-index keyword search (`$text` search with textScore relevance scoring).
+- The embedding interface is abstracted behind `getEmbedding(text)` so switching providers or operating in fallback mode requires zero changes to calling code.
+
+### Configuration Constants (`server/agents/reviewRetrieval.js`)
+
+| Constant | Default | Description |
+|---|---|---|
+| `SIMILARITY_THRESHOLD` | `0.82` | Minimum cosine similarity required to flag a matched precedent |
+| `MAX_MATCHES_PER_HUNK` | `3` | Maximum historical matches surfaced per changed hunk |
+
+### False-Positive Rate (FPR) Guarantee
+Unlike concurrent modification risks (which are deterministic git-diff line overlaps and excluded from FPR), `review-history-match` is a **probabilistic similarity match**. In accordance with CodeGuard AI's honesty guarantee, `review-history-match` issues **ARE included** in the false-positive rate calculation denominator like any LLM-derived finding.
+
+### Heuristic Disclaimer
+Precedent matches are a **similarity heuristic, not a guarantee**. A high similarity score means the code change strongly resembles a past pattern flagged by your team and is "worth a look" — not that it is definitely a defect.
