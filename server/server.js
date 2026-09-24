@@ -5,6 +5,7 @@ import repoRoutes from './routes/repos.js';
 import analyzeRoutes from './routes/analyze.js';
 import reportRoutes from './routes/reports.js';
 import conflictRoutes from './routes/conflict.js';
+import featureRoutes from './routes/features.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -18,6 +19,7 @@ app.use('/api', repoRoutes);
 app.use('/api', analyzeRoutes);
 app.use('/api', reportRoutes);
 app.use('/api', conflictRoutes);
+app.use('/api', featureRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

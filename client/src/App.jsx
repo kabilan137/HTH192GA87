@@ -5,10 +5,12 @@ import PullRequestList from './components/PullRequestList.jsx';
 import ReportView from './components/ReportView.jsx';
 import ReportHistory from './components/ReportHistory.jsx';
 import ConflictReport from './components/ConflictReport.jsx';
+import FeatureDashboard from './components/FeatureDashboard.jsx';
+import FeatureCreateModal from './components/FeatureCreateModal.jsx';
 import './App.css';
 
 export default function App() {
-  // Views: 'home' | 'prs' | 'analyzing' | 'report' | 'history' | 'conflict-checking' | 'conflict'
+  // Views: 'home' | 'prs' | 'analyzing' | 'report' | 'history' | 'conflict-checking' | 'conflict' | 'features'
   const [view, setView] = useState('home');
   const [repoInfo, setRepoInfo] = useState(null);
   const [selectedPR, setSelectedPR] = useState(null);
@@ -23,20 +25,26 @@ export default function App() {
   const [conflictChecking, setConflictChecking] = useState(false);
   const [conflictError, setConflictError] = useState(null);
 
+  // Feature Tracking state (Step B, Step H)
+  const [featureSnapshot, setFeatureSnapshot] = useState(null);
+  const [showFeatureModal, setShowFeatureModal] = useState(false);
+
   const handleRepoSelected = useCallback((owner, repo) => {
     setRepoInfo({ owner, repo });
     setSelectedPR(null);
     setReport(null);
+    setFeatureSnapshot(null);
     setConflictReport(null);
     setView('prs');
   }, []);
 
-  const handleAnalyze = useCallback(async (pr) => {
+  const handleAnalyze = useCallback(async (pr, featureId) => {
     if (!repoInfo) return;
     setSelectedPR(pr);
     setAnalyzing(true);
     setAnalyzeError(null);
     setReport(null);
+    setFeatureSnapshot(null);
     setView('analyzing');
 
     try {
@@ -47,6 +55,7 @@ export default function App() {
           owner: repoInfo.owner,
           repo: repoInfo.repo,
           pullNumber: pr.number,
+          featureId: featureId || undefined,
         }),
       });
 
@@ -56,6 +65,7 @@ export default function App() {
       setReport(data.report);
       setLlmSummary(data.llmSummary || '');
       setJsOnlyNote(data.jsOnlyNote || null);
+      setFeatureSnapshot(data.featureSnapshot || null);
       setView('report');
     } catch (e) {
       setAnalyzeError(e.message);
@@ -66,12 +76,13 @@ export default function App() {
   }, [repoInfo]);
 
   // ── Branch analysis handler — no PR number required ──────────────────────
-  const handleAnalyzeBranch = useCallback(async (branchName) => {
+  const handleAnalyzeBranch = useCallback(async (branchName, featureId) => {
     if (!repoInfo) return;
     setSelectedPR({ number: null, title: `branch: ${branchName}` });
     setAnalyzing(true);
     setAnalyzeError(null);
     setReport(null);
+    setFeatureSnapshot(null);
     setView('analyzing');
 
     try {
@@ -82,6 +93,7 @@ export default function App() {
           owner: repoInfo.owner,
           repo: repoInfo.repo,
           branch: branchName,
+          featureId: featureId || undefined,
         }),
       });
 
@@ -91,6 +103,7 @@ export default function App() {
       setReport(data.report);
       setLlmSummary(data.llmSummary || '');
       setJsOnlyNote(data.jsOnlyNote || null);
+      setFeatureSnapshot(data.featureSnapshot || null);
       setView('report');
     } catch (e) {
       setAnalyzeError(e.message);
@@ -100,7 +113,7 @@ export default function App() {
     }
   }, [repoInfo]);
 
-  // ── NEW: Conflict Check handler ──────────────────────────────────────────
+  // ── Conflict Check handler ──────────────────────────────────────────
 
   const handleConflictCheck = useCallback(async (pr) => {
     if (!repoInfo) return;
@@ -137,16 +150,19 @@ export default function App() {
   const handleBack = useCallback(() => {
     if (view === 'report' || view === 'analyzing' || view === 'conflict' || view === 'conflict-checking') {
       setView('prs');
+    } else if (view === 'features') {
+      setView(repoInfo ? 'prs' : 'home');
     } else {
       setView('home');
       setRepoInfo(null);
     }
-  }, [view]);
+  }, [view, repoInfo]);
 
   const handleViewReport = useCallback((reportData) => {
     setReport(reportData);
     setLlmSummary('');
     setJsOnlyNote(null);
+    setFeatureSnapshot(null);
     setView('report');
   }, []);
 
@@ -155,6 +171,7 @@ export default function App() {
       <Header
         onHome={() => { setView('home'); setRepoInfo(null); }}
         onHistory={() => setView('history')}
+        onFeatures={() => setView('features')}
         currentView={view}
       />
 
@@ -185,6 +202,39 @@ export default function App() {
             </div>
           )}
 
+          {view === 'features' && (
+            <div className="fade-in">
+              <div style={{ marginBottom: '16px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button className="btn btn-secondary btn-sm" onClick={handleBack}>
+                  ← Back to {repoInfo ? 'PRs' : 'Home'}
+                </button>
+                {repoInfo && (
+                  <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+                    Repository: <strong>{repoInfo.owner}/{repoInfo.repo}</strong>
+                  </span>
+                )}
+              </div>
+              {repoInfo ? (
+                <FeatureDashboard
+                  owner={repoInfo.owner}
+                  repo={repoInfo.repo}
+                  onCreateFeature={() => setShowFeatureModal(true)}
+                />
+              ) : (
+                <div className="card text-center" style={{ padding: '40px' }}>
+                  <div style={{ fontSize: '32px', marginBottom: '12px' }}>🎯</div>
+                  <h3 style={{ marginBottom: '8px' }}>Select a Repository First</h3>
+                  <p className="text-secondary" style={{ maxWidth: '420px', margin: '0 auto 16px' }}>
+                    Feature requirements and completion snapshots are tracked per repository. Select a repository on the home page to start.
+                  </p>
+                  <button className="btn btn-primary" onClick={() => setView('home')}>
+                    Go to Home
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {view === 'analyzing' && (
             <AnalyzingOverlay pr={selectedPR} repoInfo={repoInfo} />
           )}
@@ -199,6 +249,7 @@ export default function App() {
                 report={report}
                 llmSummary={llmSummary}
                 jsOnlyNote={jsOnlyNote}
+                featureSnapshot={featureSnapshot}
                 onBack={() => setView('prs')}
                 onNewRepo={() => { setView('home'); setRepoInfo(null); }}
               />
@@ -225,6 +276,18 @@ export default function App() {
           )}
         </div>
       </main>
+
+      {/* Global Feature Creation Modal */}
+      {showFeatureModal && repoInfo && (
+        <FeatureCreateModal
+          owner={repoInfo.owner}
+          repo={repoInfo.repo}
+          onClose={() => setShowFeatureModal(false)}
+          onFeatureCreated={() => {
+            setShowFeatureModal(false);
+          }}
+        />
+      )}
     </div>
   );
 }

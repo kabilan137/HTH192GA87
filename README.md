@@ -15,6 +15,7 @@ CodeGuard AI is a full-stack hackathon MVP that scans GitHub pull requests for b
 - **Concurrent Modification Risk**: Compares the reviewed branch against ALL active sibling branches (not just those with open PRs). Detects line-range overlaps via the GitHub compare endpoint — no AST analysis, heuristic only. Surfaces a `futureRiskTier` (High/Medium/Low) and "No PR yet" vs "Open PR" badge per collision.
 - **Branch-Mode Analysis**: Analyze any pushed branch directly (no PR required) via `POST /api/analyze { owner, repo, branch }`. Full ESLint + LLM + concurrent-risk pipeline runs identically to PR mode.
 - **Review Memory & Institutional Precedents**: Ingests resolved review comment threads from merged PRs via GitHub GraphQL as stored "incidents". When analyzing new code changes, embeds diff hunks and searches for similar past problems; if a match exceeds the similarity threshold (0.82), generates a grounded suggested fix referencing past PRs and reviewers before human review.
+- **Feature Requirement Tracking**: Record feature requirements once in plain language with LLM-assisted atomic extraction. As PRs and branches are submitted over time, evaluates the cumulative code state against the requirement checklist, tracking gap resolution (`resolved`, `still_open`, `regressed`), code citations, and running completion percentage across immutable snapshots.
 
 ## 📋 Prerequisites
 
@@ -93,7 +94,13 @@ Open `http://localhost:5173` in your browser.
 | GET | `/api/repos/:owner/:repo/commits` | Recent commit history |
 | POST | `/api/repos/:owner/:repo/import-history` | Ingest resolved review comment threads from merged PRs (seeding step) |
 | GET | `/api/repos/:owner/:repo/incidents` | Query stored review incidents for a repo |
-| POST | `/api/analyze` | Run full analysis pipeline (PR or branch mode) |
+| POST | `/api/features/extract` | LLM-assisted requirement extraction from free-text |
+| POST | `/api/features` | Create a new tracked feature |
+| GET | `/api/features` | List tracked features for a repo |
+| GET | `/api/features/:id` | Get feature details and latest snapshot |
+| PATCH | `/api/features/:id` | Edit feature requirements or status |
+| DELETE | `/api/features/:id` | Delete a tracked feature and its snapshots |
+| POST | `/api/analyze` | Run full analysis pipeline (PR or branch mode, optional featureId) |
 | POST | `/api/conflict-check` | Deep merge-conflict analysis via Claude |
 | GET | `/api/reports` | List all past reports |
 | GET | `/api/reports/:id` | Fetch a specific report |
@@ -285,3 +292,63 @@ Unlike concurrent modification risks (which are deterministic git-diff line over
 
 ### Heuristic Disclaimer
 Precedent matches are a **similarity heuristic, not a guarantee**. A high similarity score means the code change strongly resembles a past pattern flagged by your team and is "worth a look" — not that it is definitely a defect.
+
+---
+
+## 🎯 Feature Requirement Tracking
+
+Feature Requirement Tracking lets developers and managers record what a feature is supposed to build once, in plain language, when work begins. Every pull request or branch analyzed against that feature is checked against the requirement checklist using the feature's **cumulative code state** relative to `main` — not just an isolated PR diff. Successive PRs are judged on whether they actually closed the gaps left open by earlier work.
+
+### 🏛️ Architectural Boundary & Separation of Concerns
+
+Feature completeness is fundamentally distinct from code quality or merge risk:
+- **Independent Data Model**: Stored in dedicated `Feature` and `FeatureSnapshot` Mongoose collections.
+- **Zero Schema Pollution**: Does **not** write to or read from the `Issue` collection, `riskScore` (0–100), or `falsePositiveRate` calculation.
+- **Parallel Report Type**: Renders in its own dedicated `FeatureTrackingPanel` below the PR risk report.
+
+### 📝 Step-by-Step Workflow
+
+#### 1. Creating a Tracked Feature (Step A & F)
+1. In the top navigation bar, click **"🎯 Features"** or use the **"+ New Feature"** shortcut in the PR list.
+2. Enter the feature title and free-text specification (user stories, acceptance criteria, or product specs).
+3. Click **"Extract Requirements with AI"**:
+   - Claude decomposes the description into atomic, independently verifiable requirements (avoiding compound "X and Y" rules).
+   - Each requirement is classified into a category: `functional`, `security`, `edge-case`, or `non-functional`.
+4. **Human Review Before Saving**: Review the extracted checklist. Edit requirement wording, adjust category pills, add missing rules, or delete irrelevant ones.
+5. Click **"Save Feature Tracker"**. Requirements can be updated anytime via `PATCH /api/features/:id`.
+
+#### 2. Linking a PR or Branch to a Feature (Step B & G)
+1. On the PR list or branch selector screen, locate the **"Feature Requirement Tracking"** selector bar.
+2. Select your tracked feature from the dropdown (or leave as *"No feature tracking"* to run normal code quality analysis). Selection is explicit and never relies on brittle PR naming conventions.
+3. Click **"Analyze"** on any PR or active branch.
+
+#### 3. Cumulative State Evaluation (Step C)
+Instead of judging only the PR's isolated commits, CodeGuard AI reuses the base...head and base...branch comparison logic to evaluate the **entire cumulative diff against the repository's default branch (`main`)**. This ensures all merged and ongoing work for the feature is accurately reflected.
+
+#### 4. Requirement Coverage & Evidence Grounding (Step D)
+Claude evaluates the cumulative diff against each requirement:
+- **Statuses**:
+  - `met`: The requirement is fully implemented in the cumulative diff. **Strict Citation Rule**: A verdict cannot be "met" without citing specific files, line numbers, and concrete code evidence.
+  - `partial`: Scaffolding, partial logic, or incomplete implementation is detected.
+  - `not_addressed`: No relevant code changes exist in the diff.
+  - `not_applicable`: Obsolete or superseded requirement.
+- **Transition Tracking (`changeSinceLast`)**:
+  - `first_check`: Baseline evaluation on the first PR analyzed.
+  - `resolved`: **Gap closed!** The requirement was `not_addressed` or `partial` in the previous PR and is now `met`.
+  - `still_open`: The requirement was incomplete previously and remains incomplete in this PR.
+  - `regressed`: Requirement was previously `met` but was broken or deleted in recent changes.
+  - `newly_addressed`: Requirement added to the feature after the last snapshot and now satisfied.
+  - `unchanged`: Status remained identical across snapshots.
+
+#### 5. Completion Calculation & History (Step E & H)
+- **Formula**:
+  $$\text{overallCompletionPercent} = \frac{\text{count}(\text{met}) + 0.5 \times \text{count}(\text{partial})}{\text{count}(\text{applicable})} \times 100$$
+- **Immutable Snapshots**: Every analysis saves a new `FeatureSnapshot` document. Past snapshots are never overwritten, preserving a complete audit trail of progress across PRs.
+- **Feature Dashboard**: View cumulative progress bars, total PR checks, and latest status for every tracked feature in the repository.
+
+### ⚖️ LLM Judgment Grounding & Disclaimer
+
+> **Important**: Requirement verdicts (`met`, `partial`, `not_addressed`) are **LLM judgments grounded in cited diff evidence**, not an automatic guarantee or formal sign-off.
+>
+> CodeGuard AI strictly requires the model to point to concrete files and line numbers before marking any requirement as `met`. However, this is an automated review aid to track progress and identify gaps — final sign-off remains the responsibility of engineering and QA reviewers.
+

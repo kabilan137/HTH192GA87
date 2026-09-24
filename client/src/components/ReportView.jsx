@@ -4,6 +4,7 @@ import FalsePositiveBadge from './FalsePositiveBadge.jsx';
 import TopThreePanel from './TopThreePanel.jsx';
 import ConcurrentRiskPanel from './ConcurrentRiskPanel.jsx';
 import ReviewMemoryPanel from './ReviewMemoryPanel.jsx';
+import FeatureTrackingPanel from './FeatureTrackingPanel.jsx';
 import './ReportView.css';
 
 const CATEGORY_META = {
@@ -17,7 +18,7 @@ const CATEGORY_META = {
 
 const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
 
-export default function ReportView({ report, llmSummary, jsOnlyNote, onBack, onNewRepo }) {
+export default function ReportView({ report, llmSummary, jsOnlyNote, featureSnapshot, onBack, onNewRepo }) {
   const issues = report.issues || [];
   const topIds = new Set(report.topThreeIssueIds || []);
 
@@ -127,6 +128,15 @@ export default function ReportView({ report, llmSummary, jsOnlyNote, onBack, onN
       {/* Top 3 Must-Fix */}
       {topThreeIssues.length > 0 && (
         <TopThreePanel issues={topThreeIssues} />
+      )}
+
+      {/* Feature Requirement Tracking (Step H) */}
+      {featureSnapshot && (
+        <FeatureTrackingPanel
+          snapshot={featureSnapshot}
+          owner={report.owner}
+          repo={report.repo}
+        />
       )}
 
       {/* Concurrent Modification Risk */}

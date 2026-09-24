@@ -23,6 +23,7 @@ import { runESLintOnFiles } from '../staticAnalysis/eslintRunner.js';
 import { runCodeReviewAgent } from '../agents/reviewAgent.js';
 import { detectConcurrentModificationRisk, collisionsToIssues } from '../agents/concurrentRisk.js';
 import { retrieveReviewMemoryMatches, reviewMemoryIssuesToIssues } from '../agents/reviewRetrieval.js';
+import { trackFeatureRequirements } from '../agents/featureCoverage.js';
 import { computeReportData } from '../agents/mergeAndScore.js';
 import { Report } from '../models/Report.js';
 
@@ -101,7 +102,7 @@ async function fetchFileContentsForBranch(owner, repo, files, ref) {
 // ─── Main route ───────────────────────────────────────────────────────────────
 
 router.post('/analyze', async (req, res) => {
-  const { owner, repo, pullNumber, branch } = req.body;
+  const { owner, repo, pullNumber, branch, featureId } = req.body;
 
   if (!owner || !repo) {
     return res.status(400).json({ error: 'owner and repo are required' });
@@ -232,9 +233,25 @@ router.post('/analyze', async (req, res) => {
       await report.save();
       console.log(`✅ Report saved: ${report._id}`);
 
+      // ── Step D & E: Feature Requirement Tracking (optional) ───────────────
+      let featureSnapshot = null;
+      if (featureId) {
+        console.log(`📋 Running Feature Requirement Tracking for featureId: ${featureId}...`);
+        try {
+          featureSnapshot = await trackFeatureRequirements({
+            featureId,
+            triggeredByPr: `branch: ${branch}`,
+            cumulativeDiff: diff || '',
+          });
+        } catch (feErr) {
+          console.warn(`⚠️  Feature requirement tracking error: ${feErr.message}`);
+        }
+      }
+
       return res.json({
         reportId: report._id,
         report: report.toObject(),
+        featureSnapshot: featureSnapshot ? featureSnapshot.toObject() : null,
         llmSummary: llmResult.summary || '',
         jsOnlyNote: nonJsCount > 0
           ? `⚠️  Note: ${nonJsCount} non-JavaScript file(s) were skipped. Static analysis is JS-only in this prototype.`
@@ -374,9 +391,25 @@ router.post('/analyze', async (req, res) => {
       await report.save();
       console.log(`✅ Report saved: ${report._id}`);
 
+      // ── Step D & E: Feature Requirement Tracking (optional) ───────────────
+      let featureSnapshot = null;
+      if (featureId) {
+        console.log(`📋 Running Feature Requirement Tracking for featureId: ${featureId}...`);
+        try {
+          featureSnapshot = await trackFeatureRequirements({
+            featureId,
+            triggeredByPr: `PR #${prNum}`,
+            cumulativeDiff: diff || '',
+          });
+        } catch (feErr) {
+          console.warn(`⚠️  Feature requirement tracking error: ${feErr.message}`);
+        }
+      }
+
       return res.json({
         reportId: report._id,
         report: report.toObject(),
+        featureSnapshot: featureSnapshot ? featureSnapshot.toObject() : null,
         llmSummary: llmResult.summary || '',
         jsOnlyNote: nonJsCount > 0
           ? `⚠️  Note: ${nonJsCount} non-JavaScript file(s) were skipped. Static analysis is JS-only in this prototype.`

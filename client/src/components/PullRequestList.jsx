@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import FeatureCreateModal from './FeatureCreateModal.jsx';
 import './PullRequestList.css';
 
 export default function PullRequestList({
@@ -26,6 +27,23 @@ export default function PullRequestList({
   // Review Memory seeding state
   const [importingHistory, setImportingHistory] = useState(false);
   const [importHistoryResult, setImportHistoryResult] = useState(null);
+
+  // Feature Tracking picker state (Step G)
+  const [features, setFeatures] = useState([]);
+  const [selectedFeatureId, setSelectedFeatureId] = useState('');
+  const [showCreateFeatureModal, setShowCreateFeatureModal] = useState(false);
+
+  const loadFeatures = () => {
+    if (!owner || !repo) return;
+    fetch(`/api/features?owner=${owner}&repo=${repo}`)
+      .then((r) => r.json())
+      .then((d) => setFeatures(d.features || []))
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    loadFeatures();
+  }, [owner, repo]);
 
   const handleImportHistory = async () => {
     if (!owner || !repo || importingHistory) return;
@@ -170,6 +188,36 @@ export default function PullRequestList({
           </div>
         )}
 
+        {/* Feature Requirement Tracker Picker (Step G) */}
+        <div className="pr-feature-picker-bar">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '15px' }}>🎯</span>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: '#e2e8f0' }}>Track Feature:</span>
+            <select
+              className="pr-feature-select"
+              value={selectedFeatureId}
+              onChange={(e) => setSelectedFeatureId(e.target.value)}
+              id="feature-picker-select"
+            >
+              <option value="">-- No Feature Linked (Code Quality Only) --</option>
+              {features.map((f) => (
+                <option key={f._id} value={f._id}>
+                  {f.title} ({f.completionPercent ?? 0}% completed · {f.requirements?.length || 0} reqs)
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => setShowCreateFeatureModal(true)}
+            id="create-feature-shortcut-btn"
+            style={{ fontSize: '11px', padding: '4px 10px' }}
+          >
+            + New Feature
+          </button>
+        </div>
+
         {!loading && !error && prs.length > 0 && (
           <div className="pr-filter">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -250,7 +298,7 @@ export default function PullRequestList({
             <PRItem
               key={pr.number}
               pr={pr}
-              onAnalyze={onAnalyze}
+              onAnalyze={(item) => onAnalyze(item, selectedFeatureId)}
               onConflictCheck={onConflictCheck}
               isAnalyzing={analyzing && selectedPR?.number === pr.number}
               isConflictChecking={conflictChecking && selectedPR?.number === pr.number}
@@ -272,9 +320,21 @@ export default function PullRequestList({
         onSelectBranch={setSelectedBranch}
         branchFilter={branchFilter}
         onBranchFilterChange={setBranchFilter}
-        onAnalyzeBranch={onAnalyzeBranch}
+        onAnalyzeBranch={(b) => onAnalyzeBranch(b, selectedFeatureId)}
         analyzing={analyzing}
       />
+
+      {showCreateFeatureModal && (
+        <FeatureCreateModal
+          owner={owner}
+          repo={repo}
+          onClose={() => setShowCreateFeatureModal(false)}
+          onFeatureCreated={(newF) => {
+            loadFeatures();
+            setSelectedFeatureId(newF._id);
+          }}
+        />
+      )}
 
 
       <div className="info-note warn-note mt-4">

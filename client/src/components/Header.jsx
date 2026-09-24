@@ -1,6 +1,6 @@
 import './Header.css';
 
-export default function Header({ onHome, onHistory, currentView }) {
+export default function Header({ onHome, onHistory, onFeatures, currentView }) {
   return (
     <header className="header">
       <div className="container">
@@ -26,6 +26,17 @@ export default function Header({ onHome, onHistory, currentView }) {
           </nav>
 
           <div className="header-actions">
+            {onFeatures && (
+              <button
+                className={`btn btn-secondary btn-sm ${currentView === 'features' ? 'active' : ''}`}
+                onClick={onFeatures}
+                id="header-features-btn"
+                title="View tracked features and completion history"
+              >
+                <span>🎯</span> Features
+              </button>
+            )}
+
             <button
               className={`btn btn-secondary btn-sm ${currentView === 'history' ? 'active' : ''}`}
               onClick={onHistory}
