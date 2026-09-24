@@ -1,8 +1,8 @@
 /**
  * GitHub MCP Client
- * Uses the official GitHub MCP server via stdio transport.
- * We connect, list available tools, and expose helper methods that use
- * the actual tool names returned by the server (no hardcoding assumed names).
+ * Uses the official GitHub MCP server via stdio transport (Docker).
+ * If Docker is unavailable, sets mcpUnavailable=true so all callers
+ * automatically fall back to the GitHub REST API.
  */
 
 import { MultiServerMCPClient } from '@langchain/mcp-adapters';
@@ -10,8 +10,10 @@ import { MultiServerMCPClient } from '@langchain/mcp-adapters';
 let mcpClient = null;
 let mcpTools = [];
 let toolMap = {}; // name -> tool
+let mcpUnavailable = false; // true when Docker not found — REST fallback is used
 
 export async function getMCPClient() {
+  if (mcpUnavailable) return null; // callers check for null and use REST
   if (mcpClient) return mcpClient;
 
   const token = process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
@@ -19,34 +21,45 @@ export async function getMCPClient() {
     throw new Error('GITHUB_PERSONAL_ACCESS_TOKEN is not set in environment');
   }
 
-  console.log('🔧 Initializing GitHub MCP client...');
+  console.log('🔧 Initializing GitHub MCP client (requires Docker)...');
 
-  mcpClient = new MultiServerMCPClient({
-    mcpServers: {
-      github: {
-        command: 'docker',
-        args: [
-          'run',
-          '-i',
-          '--rm',
-          '-e', `GITHUB_PERSONAL_ACCESS_TOKEN=${token}`,
-          'ghcr.io/github/github-mcp-server',
-        ],
-        transport: 'stdio',
+  try {
+    mcpClient = new MultiServerMCPClient({
+      mcpServers: {
+        github: {
+          command: 'docker',
+          args: [
+            'run', '-i', '--rm',
+            '-e', `GITHUB_PERSONAL_ACCESS_TOKEN=${token}`,
+            'ghcr.io/github/github-mcp-server',
+          ],
+          transport: 'stdio',
+        },
       },
-    },
-  });
+    });
 
-  // Load and list all available tools
-  mcpTools = await mcpClient.getTools();
+    mcpTools = await mcpClient.getTools();
 
-  console.log(`✅ MCP connected. Available tools (${mcpTools.length}):`);
-  mcpTools.forEach((t) => {
-    console.log(`   - ${t.name}: ${t.description?.slice(0, 80) || ''}`);
-    toolMap[t.name] = t;
-  });
+    console.log(`✅ MCP connected. Available tools (${mcpTools.length}):`);
+    mcpTools.forEach((t) => {
+      console.log(`   - ${t.name}: ${t.description?.slice(0, 80) || ''}`);
+      toolMap[t.name] = t;
+    });
 
-  return mcpClient;
+    return mcpClient;
+  } catch (err) {
+    console.warn(
+      `⚠️  GitHub MCP (Docker) unavailable: ${err.message}\n` +
+      `   → Falling back to GitHub REST API for all operations.`
+    );
+    mcpUnavailable = true;
+    mcpClient = null;
+    return null;
+  }
+}
+
+export function isMCPAvailable() {
+  return !mcpUnavailable && mcpClient !== null;
 }
 
 export function getToolMap() {
@@ -58,24 +71,7 @@ export function getMCPTools() {
 }
 
 /**
- * Find a tool by partial name match (case-insensitive).
- * Tries exact match first, then partial.
- */
-export function findTool(partialName) {
-  const lower = partialName.toLowerCase();
-  // Exact
-  if (toolMap[partialName]) return toolMap[partialName];
-  // Partial
-  const match = Object.keys(toolMap).find((k) => k.toLowerCase().includes(lower));
-  if (match) return toolMap[match];
-  throw new Error(
-    `MCP tool not found matching "${partialName}". Available: ${Object.keys(toolMap).join(', ')}`
-  );
-}
-
-/**
  * Call a tool by its exact name with given input.
- * Returns the parsed output content.
  */
 export async function callMCPTool(toolName, input) {
   const tool = toolMap[toolName];
@@ -85,7 +81,6 @@ export async function callMCPTool(toolName, input) {
     );
   }
   const result = await tool.invoke(input);
-  // MCP tools return content as string or JSON
   try {
     return typeof result === 'string' ? JSON.parse(result) : result;
   } catch {

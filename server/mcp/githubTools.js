@@ -5,37 +5,28 @@
  * They adapt the dynamic tool list to a stable API used by the rest of the app.
  */
 
-import { getMCPClient, callMCPTool, getToolMap, findTool } from './mcpClient.js';
+import { getMCPClient, callMCPTool, getToolMap } from './mcpClient.js';
 
-// Ensure MCP is initialized before any call
+// Ensure MCP is initialized; returns true if MCP is available, false if REST fallback should be used
 async function ensureInit() {
-  await getMCPClient();
+  const client = await getMCPClient();
+  return client !== null;
 }
 
 /**
  * List open pull requests for a repo.
  */
 export async function listOpenPullRequests(owner, repo) {
-  await ensureInit();
-  const toolMap = getToolMap();
+  const mcpAvailable = await ensureInit();
+  if (!mcpAvailable) return await fetchPRsViaREST(owner, repo);
 
-  // Try to find the list_pull_requests tool (or equivalent)
+  const toolMap = getToolMap();
   const toolName = Object.keys(toolMap).find(
     (k) => k.includes('list_pull_requests') || k.includes('list_prs')
   );
+  if (!toolName) return await fetchPRsViaREST(owner, repo);
 
-  if (!toolName) {
-    // Fallback: use GitHub REST API directly
-    return await fetchPRsViaREST(owner, repo);
-  }
-
-  const result = await callMCPTool(toolName, {
-    owner,
-    repo,
-    state: 'open',
-  });
-
-  // Normalize to array of PR objects
+  const result = await callMCPTool(toolName, { owner, repo, state: 'open' });
   if (Array.isArray(result)) return result;
   if (result?.data) return result.data;
   return [];
@@ -45,21 +36,17 @@ export async function listOpenPullRequests(owner, repo) {
  * Get details of a specific pull request.
  */
 export async function getPullRequest(owner, repo, pullNumber) {
-  await ensureInit();
-  const toolMap = getToolMap();
+  const mcpAvailable = await ensureInit();
+  if (!mcpAvailable) return await fetchPRDetailViaREST(owner, repo, pullNumber);
 
+  const toolMap = getToolMap();
   const toolName = Object.keys(toolMap).find(
     (k) =>
       (k.includes('get_pull_request') || k.includes('get_pr')) &&
-      !k.includes('diff') &&
-      !k.includes('file') &&
-      !k.includes('review') &&
-      !k.includes('comment')
+      !k.includes('diff') && !k.includes('file') &&
+      !k.includes('review') && !k.includes('comment')
   );
-
-  if (!toolName) {
-    return await fetchPRDetailViaREST(owner, repo, pullNumber);
-  }
+  if (!toolName) return await fetchPRDetailViaREST(owner, repo, pullNumber);
 
   const result = await callMCPTool(toolName, { owner, repo, pullNumber });
   if (result?.data) return result.data;
@@ -70,23 +57,19 @@ export async function getPullRequest(owner, repo, pullNumber) {
  * Get the diff for a pull request.
  */
 export async function getPullRequestDiff(owner, repo, pullNumber) {
-  await ensureInit();
-  const toolMap = getToolMap();
+  const mcpAvailable = await ensureInit();
+  if (!mcpAvailable) return await fetchDiffViaREST(owner, repo, pullNumber);
 
-  // Try diff-specific tool first
+  const toolMap = getToolMap();
   const diffTool = Object.keys(toolMap).find(
     (k) => k.includes('diff') && (k.includes('pull') || k.includes('pr'))
   );
+  if (!diffTool) return await fetchDiffViaREST(owner, repo, pullNumber);
 
-  if (diffTool) {
-    const result = await callMCPTool(diffTool, { owner, repo, pullNumber });
-    if (typeof result === 'string') return result;
-    if (result?.diff) return result.diff;
-    if (result?.data) return result.data;
-    return String(result);
-  }
-
-  // Fallback: GitHub REST API
+  const result = await callMCPTool(diffTool, { owner, repo, pullNumber });
+  if (typeof result === 'string') return result;
+  if (result?.diff) return result.diff;
+  if (result?.data) return result.data;
   return await fetchDiffViaREST(owner, repo, pullNumber);
 }
 
@@ -94,22 +77,20 @@ export async function getPullRequestDiff(owner, repo, pullNumber) {
  * Get the list of files changed in a pull request.
  */
 export async function getPullRequestFiles(owner, repo, pullNumber) {
-  await ensureInit();
-  const toolMap = getToolMap();
+  const mcpAvailable = await ensureInit();
+  if (!mcpAvailable) return await fetchPRFilesViaREST(owner, repo, pullNumber);
 
+  const toolMap = getToolMap();
   const filesTool = Object.keys(toolMap).find(
     (k) =>
       (k.includes('file') || k.includes('files')) &&
       (k.includes('pull') || k.includes('pr'))
   );
+  if (!filesTool) return await fetchPRFilesViaREST(owner, repo, pullNumber);
 
-  if (filesTool) {
-    const result = await callMCPTool(filesTool, { owner, repo, pullNumber });
-    if (Array.isArray(result)) return result;
-    if (result?.data && Array.isArray(result.data)) return result.data;
-    return [];
-  }
-
+  const result = await callMCPTool(filesTool, { owner, repo, pullNumber });
+  if (Array.isArray(result)) return result;
+  if (result?.data && Array.isArray(result.data)) return result.data;
   return await fetchPRFilesViaREST(owner, repo, pullNumber);
 }
 
@@ -117,45 +98,28 @@ export async function getPullRequestFiles(owner, repo, pullNumber) {
  * Get the full content of a file from the repository.
  */
 export async function getFileContents(owner, repo, path, ref) {
-  await ensureInit();
-  const toolMap = getToolMap();
+  const mcpAvailable = await ensureInit();
+  if (!mcpAvailable) return await fetchFileViaREST(owner, repo, path, ref);
 
+  const toolMap = getToolMap();
   const contentTool = Object.keys(toolMap).find(
     (k) => k.includes('get_file') || k.includes('file_content') || k.includes('read_file')
   );
+  if (!contentTool) return await fetchFileViaREST(owner, repo, path, ref);
 
-  if (contentTool) {
-    try {
-      const result = await callMCPTool(contentTool, {
-        owner,
-        repo,
-        path,
-        ref: ref || 'HEAD',
-      });
-
-      if (typeof result === 'string') {
-        // May be base64 encoded
-        try {
-          return Buffer.from(result, 'base64').toString('utf-8');
-        } catch {
-          return result;
-        }
-      }
-      if (result?.content) {
-        try {
-          return Buffer.from(result.content, 'base64').toString('utf-8');
-        } catch {
-          return result.content;
-        }
-      }
-      return JSON.stringify(result);
-    } catch (e) {
-      console.warn(`⚠️  MCP getFileContents failed for ${path}: ${e.message}`);
-      return null;
+  try {
+    const result = await callMCPTool(contentTool, { owner, repo, path, ref: ref || 'HEAD' });
+    if (typeof result === 'string') {
+      try { return Buffer.from(result, 'base64').toString('utf-8'); } catch { return result; }
     }
+    if (result?.content) {
+      try { return Buffer.from(result.content, 'base64').toString('utf-8'); } catch { return result.content; }
+    }
+    return JSON.stringify(result);
+  } catch (e) {
+    console.warn(`⚠️  MCP getFileContents failed for ${path}: ${e.message}`);
+    return await fetchFileViaREST(owner, repo, path, ref);
   }
-
-  return await fetchFileViaREST(owner, repo, path, ref);
 }
 
 // ─── REST API Fallbacks ──────────────────────────────────────────────────────
