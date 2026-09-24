@@ -8,7 +8,7 @@
  * Output schema matches the CodeGuard AI conflict spec exactly.
  */
 
-import { ChatAnthropic } from '@langchain/anthropic';
+import { ChatOpenAI } from '@langchain/openai';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { z } from 'zod';
 
@@ -156,20 +156,28 @@ let conflictChain = null;
 function getConflictChain() {
   if (conflictChain) return conflictChain;
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error('ANTHROPIC_API_KEY is not set in environment');
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) throw new Error('OPENROUTER_API_KEY is not set in .env');
 
-  const model = new ChatAnthropic({
-    model: 'claude-sonnet-4-5',
+  const model = new ChatOpenAI({
+    model: 'anthropic/claude-sonnet-5',
     apiKey,
-    maxTokens: 8096,
     temperature: 0.1,
+    maxTokens: 3000,
+    configuration: {
+      baseURL: 'https://openrouter.ai/api/v1',
+      defaultHeaders: {
+        'HTTP-Referer': 'http://localhost:5173',
+        'X-Title': 'CodeGuard AI',
+      },
+    },
   });
 
   conflictChain = model.withStructuredOutput(ConflictResponseSchema, {
     name: 'conflict_detection',
   });
 
+  console.log('🤖 Conflict chain ready: anthropic/claude-sonnet-5 via OpenRouter');
   return conflictChain;
 }
 
