@@ -2,13 +2,21 @@ import { useState, useEffect } from 'react';
 import './PullRequestList.css';
 
 export default function PullRequestList({
-  owner, repo, onAnalyze, onBack, analyzeError, analyzing, selectedPR
+  owner, repo, onAnalyze, onConflictCheck, onBack,
+  analyzeError, conflictError, analyzing, conflictChecking, selectedPR
 }) {
   const [prs, setPrs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState('');
 
+  // Commit-history state — shown when there are no open PRs to prove MCP works
+  const [commits, setCommits] = useState(null);
+  const [commitsLoading, setCommitsLoading] = useState(false);
+  const [commitsError, setCommitsError] = useState(null);
+  const [commitsSource, setCommitsSource] = useState(null); // 'mcp' | 'rest'
+
+  // Fetch open PRs
   useEffect(() => {
     setLoading(true);
     setError(null);
@@ -21,6 +29,23 @@ export default function PullRequestList({
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [owner, repo]);
+
+  // Auto-fetch commits once we confirm there are no open PRs
+  useEffect(() => {
+    if (!loading && !error && prs.length === 0) {
+      setCommitsLoading(true);
+      setCommitsError(null);
+      fetch(`/api/repos/${owner}/${repo}/commits?per_page=20`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.error) throw new Error(data.error);
+          setCommits(data.commits || []);
+          setCommitsSource(data.source || 'rest');
+        })
+        .catch((e) => setCommitsError(e.message))
+        .finally(() => setCommitsLoading(false));
+    }
+  }, [loading, error, prs.length, owner, repo]);
 
   const filtered = prs.filter(
     (pr) =>
@@ -71,6 +96,15 @@ export default function PullRequestList({
           </div>
         )}
 
+        {conflictError && (
+          <div className="pr-error-banner" style={{ borderColor: 'rgba(245,158,11,0.4)', background: 'rgba(245,158,11,0.08)', color: '#f59e0b' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            <strong>Conflict check failed:</strong> {conflictError}
+          </div>
+        )}
+
         {analyzeError && (
           <div className="pr-error-banner">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -102,14 +136,16 @@ export default function PullRequestList({
           </div>
         )}
 
+        {/* When there are no open PRs, fall back to commit history to prove MCP connectivity */}
         {!loading && !error && prs.length === 0 && (
-          <div className="pr-empty">
-            <span className="pr-empty-icon">🎉</span>
-            <p>No open pull requests</p>
-            <p className="text-muted" style={{ fontSize: '13px', marginTop: '4px' }}>
-              {owner}/{repo} has no open PRs right now.
-            </p>
-          </div>
+          <CommitHistoryFallback
+            owner={owner}
+            repo={repo}
+            commits={commits}
+            loading={commitsLoading}
+            error={commitsError}
+            source={commitsSource}
+          />
         )}
 
         {!loading && !error && filtered.length === 0 && prs.length > 0 && (
@@ -125,8 +161,10 @@ export default function PullRequestList({
               key={pr.number}
               pr={pr}
               onAnalyze={onAnalyze}
+              onConflictCheck={onConflictCheck}
               isAnalyzing={analyzing && selectedPR?.number === pr.number}
-              disabled={analyzing}
+              isConflictChecking={conflictChecking && selectedPR?.number === pr.number}
+              disabled={analyzing || conflictChecking}
             />
           ))}
         </div>
@@ -146,11 +184,144 @@ export default function PullRequestList({
   );
 }
 
-function PRItem({ pr, onAnalyze, isAnalyzing, disabled }) {
+// ─── Commit History Fallback Panel ───────────────────────────────────────────
+
+function CommitHistoryFallback({ owner, repo, commits, loading, error, source }) {
+  return (
+    <div className="commit-fallback">
+      {/* Header: explains no PRs + shows MCP/REST status */}
+      <div className="commit-fallback-header">
+        <div className="commit-fallback-title-row">
+          <span className="commit-fallback-icon">🎉</span>
+          <div>
+            <p className="commit-fallback-title">No open pull requests</p>
+            <p className="text-muted" style={{ fontSize: '13px', marginTop: '2px' }}>
+              {owner}/{repo} has no open PRs — fetching commit history via the MCP pipeline to confirm connectivity.
+            </p>
+          </div>
+        </div>
+
+        {/* Source badge — appears once data arrives */}
+        {source && (
+          <div className={`mcp-source-badge ${source === 'mcp' ? 'mcp-badge-mcp' : 'mcp-badge-rest'}`}>
+            {source === 'mcp' ? (
+              <>
+                <span className="mcp-dot mcp-dot-green" />
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                </svg>
+                MCP Active — GitHub MCP Server (Docker)
+              </>
+            ) : (
+              <>
+                <span className="mcp-dot mcp-dot-amber" />
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+                REST Fallback — GitHub REST API
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Commit list */}
+      <div className="commit-list-section">
+        <div className="commit-list-heading">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="3" />
+            <line x1="3" y1="12" x2="9" y2="12" />
+            <line x1="15" y1="12" x2="21" y2="12" />
+          </svg>
+          Recent Commits
+          {commits && <span className="commit-count-chip">{commits.length}</span>}
+        </div>
+
+        {loading && (
+          <div className="commit-skeleton-list">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="commit-skeleton-row">
+                <div className="skeleton" style={{ width: '32px', height: '32px', borderRadius: '50%', flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <div className="skeleton" style={{ height: '13px', width: '70%' }} />
+                  <div className="skeleton" style={{ height: '11px', width: '40%', marginTop: '5px' }} />
+                </div>
+                <div className="skeleton" style={{ width: '55px', height: '22px', borderRadius: '6px' }} />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {error && (
+          <div className="commit-error">
+            <span>⚠️</span>
+            <span>Could not load commit history: {error}</span>
+          </div>
+        )}
+
+        {!loading && !error && commits && commits.length === 0 && (
+          <div className="commit-empty">No commits found.</div>
+        )}
+
+        {!loading && !error && commits && commits.length > 0 && (
+          <div className="commit-rows">
+            {commits.map((c, idx) => (
+              <CommitRow key={c.sha || idx} commit={c} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CommitRow({ commit }) {
+  const date = commit.date
+    ? new Date(commit.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : '';
+
+  return (
+    <div className="commit-row" id={`commit-${commit.shortSha}`}>
+      {/* Avatar or initials */}
+      <div className="commit-avatar">
+        {commit.authorAvatar ? (
+          <img src={commit.authorAvatar} alt={commit.author} className="commit-avatar-img" />
+        ) : (
+          <div className="commit-avatar-initials">
+            {(commit.author || '?')[0].toUpperCase()}
+          </div>
+        )}
+      </div>
+
+      <div className="commit-body">
+        <div className="commit-message">{commit.message}</div>
+        <div className="commit-meta">
+          <span className="commit-author">{commit.authorLogin || commit.author}</span>
+          {date && <span className="commit-date">{date}</span>}
+        </div>
+      </div>
+
+      <a
+        href={commit.url}
+        target="_blank"
+        rel="noreferrer"
+        className="commit-sha-chip"
+        title="View on GitHub"
+      >
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
+        </svg>
+        {commit.shortSha}
+      </a>
+    </div>
+  );
+}
+
+function PRItem({ pr, onAnalyze, onConflictCheck, isAnalyzing, isConflictChecking, disabled }) {
   const createdAt = pr.createdAt ? new Date(pr.createdAt).toLocaleDateString() : '';
 
   return (
-    <div className={`pr-item ${disabled && !isAnalyzing ? 'pr-item-disabled' : ''}`}>
+    <div className={`pr-item ${disabled && !isAnalyzing && !isConflictChecking ? 'pr-item-disabled' : ''}`}>
       <div className="pr-item-number">#{pr.number}</div>
       <div className="pr-item-body">
         <div className="pr-item-title">{pr.title}</div>
@@ -175,26 +346,55 @@ function PRItem({ pr, onAnalyze, isAnalyzing, disabled }) {
           )}
         </div>
       </div>
-      <button
-        id={`analyze-btn-${pr.number}`}
-        className="btn btn-primary btn-sm pr-analyze-btn"
-        onClick={() => onAnalyze(pr)}
-        disabled={disabled}
-      >
-        {isAnalyzing ? (
-          <>
-            <div className="spinner" style={{ width: '12px', height: '12px', borderWidth: '2px' }} />
-            Analyzing...
-          </>
-        ) : (
-          <>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-            Analyze
-          </>
-        )}
-      </button>
+
+      {/* Action buttons */}
+      <div className="pr-item-actions">
+        {/* Conflict check button */}
+        <button
+          id={`conflict-btn-${pr.number}`}
+          className="btn btn-secondary btn-sm pr-conflict-btn"
+          onClick={() => onConflictCheck && onConflictCheck(pr)}
+          disabled={disabled}
+          title="Check for merge conflicts between this PR and main branch"
+        >
+          {isConflictChecking ? (
+            <>
+              <div className="spinner" style={{ width: '12px', height: '12px', borderWidth: '2px', borderTopColor: '#f59e0b' }} />
+              Checking...
+            </>
+          ) : (
+            <>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+              Conflicts
+            </>
+          )}
+        </button>
+
+        {/* Analyze button */}
+        <button
+          id={`analyze-btn-${pr.number}`}
+          className="btn btn-primary btn-sm pr-analyze-btn"
+          onClick={() => onAnalyze(pr)}
+          disabled={disabled}
+        >
+          {isAnalyzing ? (
+            <>
+              <div className="spinner" style={{ width: '12px', height: '12px', borderWidth: '2px' }} />
+              Analyzing...
+            </>
+          ) : (
+            <>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              Analyze
+            </>
+          )}
+        </button>
+      </div>
     </div>
   );
 }

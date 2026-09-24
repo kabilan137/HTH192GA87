@@ -23,13 +23,22 @@ export default function RepoSelector({ onRepoSelected }) {
       return;
     }
 
-    const parts = trimmed.replace(/^https?:\/\/github\.com\//, '').split('/');
+    // Normalise: handle https://, git@, and bare "owner/repo" inputs
+    // Also strip trailing .git and any stray slashes
+    const normalized = trimmed
+      .replace(/^git@github\.com:/, '')      // git@github.com:owner/repo.git
+      .replace(/^https?:\/\/github\.com\//, '') // https://github.com/owner/repo
+      .replace(/\.git$/, '')                  // strip .git suffix
+      .replace(/\/+$/, '');                  // strip trailing slashes
+
+    const parts = normalized.split('/');
     if (parts.length < 2 || !parts[0] || !parts[1]) {
       setError('Enter a valid GitHub repository as "owner/repo" or paste the full GitHub URL.');
       return;
     }
 
-    const [owner, repo] = parts;
+    const owner = parts[0].trim();
+    const repo  = parts[1].trim().replace(/\.git$/, ''); // belt-and-suspenders
 
     setLoading(true);
     try {

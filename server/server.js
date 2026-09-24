@@ -4,6 +4,7 @@ import mongoose from 'mongoose';
 import repoRoutes from './routes/repos.js';
 import analyzeRoutes from './routes/analyze.js';
 import reportRoutes from './routes/reports.js';
+import conflictRoutes from './routes/conflict.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -16,6 +17,7 @@ app.use(express.json());
 app.use('/api', repoRoutes);
 app.use('/api', analyzeRoutes);
 app.use('/api', reportRoutes);
+app.use('/api', conflictRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

@@ -172,3 +172,278 @@
 .pr-analyze-btn {
   flex-shrink: 0;
 }
+
+/* Two-button action group per PR row */
+.pr-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.pr-conflict-btn {
+  flex-shrink: 0;
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.pr-conflict-btn:hover:not(:disabled) {
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.6);
+}
+
+/* ─── Commit History Fallback ──────────────────────────────────────────────── */
+
+.commit-fallback {
+  padding: 20px 24px 8px;
+}
+
+.commit-fallback-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.commit-fallback-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.commit-fallback-icon {
+  font-size: 22px;
+  margin-top: 1px;
+}
+
+.commit-fallback-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* MCP / REST source badge */
+.mcp-source-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.mcp-badge-mcp {
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: #22c55e;
+}
+
+.mcp-badge-rest {
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  color: #f59e0b;
+}
+
+.mcp-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.mcp-dot-green {
+  background: #22c55e;
+  box-shadow: 0 0 6px #22c55e;
+  animation: mcp-pulse-green 2s infinite;
+}
+
+.mcp-dot-amber {
+  background: #f59e0b;
+  box-shadow: 0 0 6px #f59e0b;
+}
+
+@keyframes mcp-pulse-green {
+  0%, 100% { opacity: 1; box-shadow: 0 0 6px #22c55e; }
+  50%       { opacity: 0.6; box-shadow: 0 0 12px #22c55e; }
+}
+
+/* Commit list section */
+.commit-list-section {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.commit-list-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.commit-count-chip {
+  background: var(--accent-muted);
+  color: var(--accent);
+  border-radius: 100px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* Commit rows */
+.commit-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.commit-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background var(--transition);
+}
+
+.commit-row:last-child {
+  border-bottom: none;
+}
+
+.commit-row:hover {
+  background: var(--bg-secondary);
+}
+
+/* Avatar */
+.commit-avatar {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+}
+
+.commit-avatar-img {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--border);
+}
+
+.commit-avatar-initials {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--accent-muted);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+}
+
+/* Body */
+.commit-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.commit-message {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commit-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.commit-author {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.commit-date {
+  color: var(--text-muted);
+}
+
+/* SHA chip */
+.commit-sha-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--bg-tertiary, rgba(255,255,255,0.04));
+  border: 1px solid var(--border);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-decoration: none;
+  flex-shrink: 0;
+  transition: all var(--transition);
+}
+
+.commit-sha-chip:hover {
+  background: var(--accent-muted);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Skeleton loading */
+.commit-skeleton-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.commit-skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.commit-skeleton-row:last-child {
+  border-bottom: none;
+}
+
+/* Error & empty states */
+.commit-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px;
+  font-size: 13px;
+  color: var(--critical);
+}
+
+.commit-empty {
+  padding: 24px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+}

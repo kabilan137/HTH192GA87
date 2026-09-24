@@ -95,6 +95,36 @@ export async function getPullRequestFiles(owner, repo, pullNumber) {
 }
 
 /**
+ * List recent commits for a repository branch.
+ * Used as a fallback proof-of-MCP when no PRs exist.
+ */
+export async function listCommits(owner, repo, options = {}) {
+  const mcpAvailable = await ensureInit();
+  if (!mcpAvailable) return await fetchCommitsViaREST(owner, repo, options);
+
+  const toolMap = getToolMap();
+  const toolName = Object.keys(toolMap).find(
+    (k) => k.includes('list_commits') || k.includes('get_commits')
+  );
+  if (!toolName) return await fetchCommitsViaREST(owner, repo, options);
+
+  try {
+    const result = await callMCPTool(toolName, {
+      owner,
+      repo,
+      sha: options.sha || 'HEAD',
+      perPage: options.perPage || 20,
+    });
+    if (Array.isArray(result)) return result;
+    if (result?.data) return result.data;
+    return await fetchCommitsViaREST(owner, repo, options);
+  } catch (e) {
+    console.warn(`⚠️  MCP listCommits failed: ${e.message}, falling back to REST`);
+    return await fetchCommitsViaREST(owner, repo, options);
+  }
+}
+
+/**
  * Get the full content of a file from the repository.
  */
 export async function getFileContents(owner, repo, path, ref) {
@@ -123,6 +153,13 @@ export async function getFileContents(owner, repo, path, ref) {
 }
 
 // ─── REST API Fallbacks ──────────────────────────────────────────────────────
+
+export async function fetchCommitsViaREST(owner, repo, options = {}) {
+  const perPage = options.perPage || 20;
+  const sha = options.sha ? `&sha=${options.sha}` : '';
+  const res = await ghFetch(`/repos/${owner}/${repo}/commits?per_page=${perPage}${sha}`);
+  return res.json();
+}
 
 async function ghFetch(path, accept = 'application/vnd.github+json') {
   const token = process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
