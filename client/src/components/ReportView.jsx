@@ -2,13 +2,15 @@ import { useState } from 'react';
 import RiskGauge from './RiskGauge.jsx';
 import FalsePositiveBadge from './FalsePositiveBadge.jsx';
 import TopThreePanel from './TopThreePanel.jsx';
+import ConcurrentRiskPanel from './ConcurrentRiskPanel.jsx';
 import './ReportView.css';
 
 const CATEGORY_META = {
-  'Bug - Certain':           { color: 'bug',      icon: '🐛', label: 'Bug — Certain' },
-  'Security Vulnerability':  { color: 'security', icon: '🔒', label: 'Security Vulnerability' },
-  'Performance Risk':        { color: 'perf',     icon: '⚡', label: 'Performance Risk' },
-  'Code Smell - Stylistic':  { color: 'style',    icon: '✨', label: 'Code Smell — Stylistic' },
+  'Bug - Certain':                  { color: 'bug',      icon: '🐛', label: 'Bug — Certain' },
+  'Security Vulnerability':         { color: 'security', icon: '🔒', label: 'Security Vulnerability' },
+  'Performance Risk':               { color: 'perf',     icon: '⚡', label: 'Performance Risk' },
+  'Code Smell - Stylistic':         { color: 'style',    icon: '✨', label: 'Code Smell — Stylistic' },
+  'Concurrent Modification Risk':   { color: 'concurrent', icon: '🔀', label: 'Concurrent Modification Risk' },
 };
 
 const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
@@ -124,6 +126,9 @@ export default function ReportView({ report, llmSummary, jsOnlyNote, onBack, onN
       {topThreeIssues.length > 0 && (
         <TopThreePanel issues={topThreeIssues} />
       )}
+
+      {/* Concurrent Modification Risk */}
+      <ConcurrentRiskPanel issues={issues} />
 
       {/* Full Issue List */}
       <div className="report-issues-section">

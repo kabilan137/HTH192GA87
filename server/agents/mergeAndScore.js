@@ -10,13 +10,22 @@
 
 import { randomUUID } from 'crypto';
 
-// Category weights as specified
+// Category weights — concurrent risk weighted by collision type
 const CATEGORY_WEIGHTS = {
-  'Security Vulnerability': 10,
-  'Bug - Certain': 7,
-  'Performance Risk': 4,
-  'Code Smell - Stylistic': 1,
+  'Security Vulnerability':    10,
+  'Bug - Certain':              7,
+  'Concurrent Modification Risk': 6, // line-level; file-level uses 2 (applied below)
+  'Performance Risk':           4,
+  'Code Smell - Stylistic':     1,
 };
+
+// For concurrent risk, use collisionType to pick the right weight
+function getCategoryWeight(issue) {
+  if (issue.category === 'Concurrent Modification Risk') {
+    return issue.collisionType === 'line-level' ? 6 : 2;
+  }
+  return CATEGORY_WEIGHTS[issue.category] || 1;
+}
 
 /**
  * Check if an ESLint finding and an LLM issue refer to the same problem.
@@ -120,31 +129,31 @@ export function mergeIssues(eslintFindings, llmIssues) {
 export function computeRiskScore(issues) {
   if (!issues || issues.length === 0) return 0;
 
-  // Raw score: sum of (weight × confidence)
   const rawScore = issues.reduce((sum, issue) => {
-    const weight = CATEGORY_WEIGHTS[issue.category] || 1;
+    const weight = getCategoryWeight(issue);
     return sum + weight * (issue.confidence || 0.5);
   }, 0);
 
-  // Normalization: Use a sigmoid-like scale.
-  // A PR with 10 critical security issues (each 10 × 1.0 = 10) → raw = 100 → score = ~90
-  // A PR with 50 stylistic issues (each 1 × 0.5) → raw = 25 → score = ~40
-  // Max theoretical raw per issue = 10; we set the "100%" mark at raw = 80
   const MAX_RAW = 80;
   const normalized = Math.min(100, (rawScore / MAX_RAW) * 100);
-
   return Math.round(normalized);
 }
 
 /**
  * Compute false-positive rate.
  *
- * FPR = (llm-only issues) / (total issues) × 100
+ * FPR = (llm-only issues) / (total non-deterministic issues) × 100
+ *
+ * NOTE: 'diff-overlap' issues are EXCLUDED from the FPR denominator because
+ * they are deterministically detected from real diffs, not inferred by the LLM.
  */
 export function computeFalsePositiveRate(issues) {
   if (!issues || issues.length === 0) return 0;
-  const llmOnly = issues.filter((i) => i.source === 'llm-only').length;
-  return Math.round((llmOnly / issues.length) * 100);
+  // Only count issues that could be false positives (not ground-truth diff-overlap)
+  const countableIssues = issues.filter((i) => i.source !== 'diff-overlap');
+  if (countableIssues.length === 0) return 0;
+  const llmOnly = countableIssues.filter((i) => i.source === 'llm-only').length;
+  return Math.round((llmOnly / countableIssues.length) * 100);
 }
 
 /**
@@ -157,7 +166,7 @@ export function selectTopThreeIssues(issues) {
   const scored = issues.map((issue) => ({
     id: issue.id,
     score:
-      (CATEGORY_WEIGHTS[issue.category] || 1) *
+      getCategoryWeight(issue) *
       (issue.confidence || 0.5) *
       (severityMultiplier[issue.severity] || 1),
   }));
@@ -168,16 +177,20 @@ export function selectTopThreeIssues(issues) {
 
 /**
  * Full pipeline: merge, score, and produce final report data.
+ * Accepts optional concurrent-risk issues (already formatted, source='diff-overlap').
  */
-export function computeReportData(eslintFindings, llmIssues) {
-  const issues = mergeIssues(eslintFindings, llmIssues);
+export function computeReportData(eslintFindings, llmIssues, concurrentIssues = []) {
+  const baseIssues = mergeIssues(eslintFindings, llmIssues);
+  const issues = [...baseIssues, ...concurrentIssues];
+
   const riskScore = computeRiskScore(issues);
-  const falsePositiveRate = computeFalsePositiveRate(issues);
+  const falsePositiveRate = computeFalsePositiveRate(issues); // excludes diff-overlap
   const topThreeIssueIds = selectTopThreeIssues(issues);
 
-  const staticIssuesCount = issues.filter((i) => i.source === 'static-only').length;
-  const llmIssuesCount = issues.filter((i) => i.source === 'llm-only').length;
+  const staticIssuesCount   = issues.filter((i) => i.source === 'static-only').length;
+  const llmIssuesCount      = issues.filter((i) => i.source === 'llm-only').length;
   const combinedIssuesCount = issues.filter((i) => i.source === 'static+llm').length;
+  const concurrentModificationCount = issues.filter((i) => i.source === 'diff-overlap').length;
 
   return {
     issues,
@@ -188,5 +201,6 @@ export function computeReportData(eslintFindings, llmIssues) {
     staticIssuesCount,
     llmIssuesCount,
     combinedIssuesCount,
+    concurrentModificationCount,
   };
 }

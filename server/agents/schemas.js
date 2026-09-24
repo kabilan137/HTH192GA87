@@ -10,11 +10,12 @@ export const IssueCategory = z.enum([
   'Security Vulnerability',
   'Performance Risk',
   'Code Smell - Stylistic',
+  'Concurrent Modification Risk',
 ]);
 
 export const IssueSeverity = z.enum(['critical', 'high', 'medium', 'low']);
 
-export const IssueSource = z.enum(['static+llm', 'llm-only', 'static-only']);
+export const IssueSource = z.enum(['static+llm', 'llm-only', 'static-only', 'diff-overlap']);
 
 export const IssueSchema = z.object({
   file: z.string().describe('Relative path to the file containing the issue'),

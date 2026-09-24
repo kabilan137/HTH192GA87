@@ -1,6 +1,6 @@
 /**
  * POST /api/analyze
- * Full agentic pipeline: MCP → ESLint → LLM → merge → save → return report
+ * Full agentic pipeline: MCP → ESLint + ConcurrentRisk (parallel) → LLM → merge → save → return report
  */
 
 import { Router } from 'express';
@@ -16,6 +16,7 @@ import {
 import { getMCPClient } from '../mcp/mcpClient.js';
 import { runESLintOnFiles } from '../staticAnalysis/eslintRunner.js';
 import { runCodeReviewAgent } from '../agents/reviewAgent.js';
+import { detectConcurrentModificationRisk, collisionsToIssues } from '../agents/concurrentRisk.js';
 import { computeReportData } from '../agents/mergeAndScore.js';
 import { Report } from '../models/Report.js';
 
@@ -40,7 +41,7 @@ router.post('/analyze', async (req, res) => {
     let prDetail, diff, prFiles;
 
     try {
-      await getMCPClient(); // ensure MCP is ready
+      await getMCPClient(); // ensure MCP is ready (no-op if unavailable)
     } catch (mcpErr) {
       console.warn('⚠️  MCP init failed, using REST API fallback:', mcpErr.message);
     }
@@ -66,8 +67,8 @@ router.post('/analyze', async (req, res) => {
       prFiles = await fetchPRFilesViaREST(owner, repo, prNum);
     }
 
-    const prTitle = prDetail?.title || `PR #${prNum}`;
-    const headSha = prDetail?.head?.sha;
+    const prTitle  = prDetail?.title || `PR #${prNum}`;
+    const headSha  = prDetail?.head?.sha;
 
     console.log(`📄 PR: "${prTitle}" | ${prFiles.length} changed files`);
 
@@ -78,7 +79,7 @@ router.post('/analyze', async (req, res) => {
 
     const nonJsCount = (prFiles?.length || 0) - jsFiles.length;
     console.log(
-      `📁 ${jsFiles.length} JS file(s) to analyze${nonJsCount > 0 ? ` (${nonJsCount} non-JS files skipped)` : ''}`
+      `📁 ${jsFiles.length} JS file(s) to analyze${nonJsCount > 0 ? ` (${nonJsCount} non-JS files skipped by static analysis)` : ''}`
     );
 
     const fileContents = {};
@@ -99,10 +100,28 @@ router.post('/analyze', async (req, res) => {
       })
     );
 
-    // ── Step 4b: Run ESLint on JS files ───────────────────────────────────
-    console.log('🔧 Running ESLint static analysis...');
-    const eslintFindings = runESLintOnFiles(fileContentArray);
-    console.log(`✅ ESLint: ${eslintFindings.length} total finding(s)`);
+    // ── Step 4b: Run ESLint + Concurrent Risk check IN PARALLEL ───────────
+    console.log('🔧 Running ESLint static analysis + concurrent risk check (parallel)...');
+
+    const [eslintFindings, collisions] = await Promise.all([
+      // ESLint — synchronous, wrapped in promise to run in parallel with concurrent risk
+      Promise.resolve(runESLintOnFiles(fileContentArray)),
+
+      // Concurrent Modification Risk — async, runs fully in parallel
+      detectConcurrentModificationRisk({
+        owner,
+        repo,
+        pullNumber: prNum,
+        prTitle,
+        reviewedPRFiles: prFiles,   // full file objects with .patch from GitHub API
+        diff: diff || '',
+      }),
+    ]);
+
+    console.log(`✅ ESLint: ${eslintFindings.length} finding(s)`);
+
+    // Convert collisions into issues shaped for the report
+    const concurrentIssues = collisionsToIssues(collisions);
 
     // ── Step 4c–d: LLM Review ─────────────────────────────────────────────
     const llmResult = await runCodeReviewAgent({
@@ -118,12 +137,14 @@ router.post('/analyze', async (req, res) => {
     const llmIssues = llmResult.issues || [];
 
     // ── Step 4e–f: Merge, score, and compute report data ──────────────────
-    const reportData = computeReportData(eslintFindings, llmIssues);
+    // concurrentIssues are passed separately — excluded from FPR calc
+    const reportData = computeReportData(eslintFindings, llmIssues, concurrentIssues);
 
     console.log(`\n📊 Report Summary:`);
     console.log(`   Risk Score: ${reportData.riskScore}/100`);
     console.log(`   Total Issues: ${reportData.totalIssues}`);
     console.log(`   False Positive Rate: ${reportData.falsePositiveRate}%`);
+    console.log(`   Concurrent Modifications: ${reportData.concurrentModificationCount}`);
     console.log(`   Top 3 Issues: ${reportData.topThreeIssueIds.join(', ')}`);
 
     // ── Step 4g: Persist to MongoDB ───────────────────────────────────────
@@ -133,14 +154,15 @@ router.post('/analyze', async (req, res) => {
       pullNumber: prNum,
       prTitle,
       prUrl: prDetail?.html_url,
-      riskScore: reportData.riskScore,
-      falsePositiveRate: reportData.falsePositiveRate,
-      issues: reportData.issues,
-      topThreeIssueIds: reportData.topThreeIssueIds,
-      totalIssues: reportData.totalIssues,
-      staticIssuesCount: reportData.staticIssuesCount,
-      llmIssuesCount: reportData.llmIssuesCount,
+      riskScore:           reportData.riskScore,
+      falsePositiveRate:   reportData.falsePositiveRate,
+      issues:              reportData.issues,
+      topThreeIssueIds:    reportData.topThreeIssueIds,
+      totalIssues:         reportData.totalIssues,
+      staticIssuesCount:   reportData.staticIssuesCount,
+      llmIssuesCount:      reportData.llmIssuesCount,
       combinedIssuesCount: reportData.combinedIssuesCount,
+      concurrentModificationCount: reportData.concurrentModificationCount,
       analyzedFiles: jsFiles.map((f) => f.filename || f.path),
       status: 'complete',
     });
@@ -149,13 +171,15 @@ router.post('/analyze', async (req, res) => {
     console.log(`✅ Report saved: ${report._id}`);
 
     res.json({
-      reportId: report._id,
-      report: report.toObject(),
+      reportId:   report._id,
+      report:     report.toObject(),
       llmSummary: llmResult.summary || '',
-      jsOnlyNote:
-        nonJsCount > 0
-          ? `⚠️  Note: ${nonJsCount} non-JavaScript file(s) were skipped. Static analysis is JS-only in this prototype.`
-          : null,
+      jsOnlyNote: nonJsCount > 0
+        ? `⚠️  Note: ${nonJsCount} non-JavaScript file(s) were skipped. Static analysis is JS-only in this prototype.`
+        : null,
+      concurrentRiskNote: reportData.concurrentModificationCount > 0
+        ? `⚠️  ${reportData.concurrentModificationCount} concurrent modification risk(s) detected in sibling open PRs.`
+        : null,
     });
   } catch (e) {
     console.error('❌ Analysis pipeline error:', e);
