@@ -7,8 +7,22 @@
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "server": "cd server && npm run dev",
     "client": "cd client && npm run dev",
-    "install:all": "npm install && cd server && npm install && cd ../client && npm install",
+    "install:all": "npm install && cd client && npm install",
     "start": "concurrently \"npm run server\" \"npm run client\""
+  },
+  "dependencies": {
+    "@langchain/community": "^1.1.29",
+    "@langchain/core": "^1.2.12",
+    "@langchain/mcp-adapters": "^1.1.4",
+    "@langchain/openai": "^1.5.13",
+    "@octokit/graphql": "^9.0.5",
+    "cors": "^2.8.5",
+    "eslint": "^8.57.0",
+    "eslint-plugin-security": "^3.0.1",
+    "express": "^4.18.2",
+    "langchain": "^1.5.12",
+    "mongoose": "^8.3.1",
+    "zod": "^3.23.0"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

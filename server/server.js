@@ -15,6 +15,9 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/codegu
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
+  // Production frontend (Vercel)
+  'https://client-i4a6v0hw8-kabilan2867-2796s-projects.vercel.app',
+  // Also allow any extra URL set via env var
   ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
 ];
 
