@@ -15,7 +15,7 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/codegu
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
-  'https://client-i4a6v0hw8-kabilan2867-2796s-projects.vercel.app',
+  'https://client-delta-eight-56.vercel.app',
   ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
 ];
 
@@ -24,7 +24,7 @@ app.use(
     origin: (origin, callback) => {
       // Allow requests with no origin (e.g. mobile apps, curl, server-to-server)
       if (!origin) return callback(null, true);
-      
+
       // Allow any vercel domain (both preview and production) or localhost
       if (
         allowedOrigins.includes(origin) ||
