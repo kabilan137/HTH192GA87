@@ -425,7 +425,10 @@ router.post('/analyze', async (req, res) => {
 
   } catch (e) {
     console.error('❌ Analysis pipeline error:', e);
-    res.status(500).json({ error: e.message, stack: e.stack });
+    res.status(500).json({
+      error: e.message,
+      ...(process.env.NODE_ENV !== 'production' && { stack: e.stack }),
+    });
   }
 });
 

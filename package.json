@@ -2,6 +2,7 @@
   "name": "codeguard-ai",
   "version": "1.0.0",
   "description": "Agentic AI Code Review & Release-Risk Assistant",
+  "type": "module",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "server": "cd server && npm run dev",
