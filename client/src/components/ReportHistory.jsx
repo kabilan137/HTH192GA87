@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import './ReportHistory.css';
+import { apiFetch } from '../api.js';
 
 function getRiskColor(score) {
   if (score >= 75) return 'var(--critical)';
@@ -15,7 +16,7 @@ export default function ReportHistory({ onViewReport, onBack }) {
 
   const load = () => {
     setLoading(true);
-    fetch('/api/reports')
+    apiFetch('/api/reports')
       .then((r) => r.json())
       .then((data) => {
         if (data.error) throw new Error(data.error);
@@ -29,7 +30,7 @@ export default function ReportHistory({ onViewReport, onBack }) {
 
   const handleView = async (reportId) => {
     try {
-      const res = await fetch(`/api/reports/${reportId}`);
+      const res = await apiFetch(`/api/reports/${reportId}`);
       const data = await res.json();
       if (data.report) {
         onViewReport(data.report);
@@ -43,7 +44,7 @@ export default function ReportHistory({ onViewReport, onBack }) {
     e.stopPropagation();
     if (!confirm('Delete this report?')) return;
     try {
-      await fetch(`/api/reports/${reportId}`, { method: 'DELETE' });
+      await apiFetch(`/api/reports/${reportId}`, { method: 'DELETE' });
       setReports((prev) => prev.filter((r) => r._id !== reportId));
     } catch (e) {
       alert('Failed to delete report');

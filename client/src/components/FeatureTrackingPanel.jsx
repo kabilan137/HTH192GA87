@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import './FeatureTrackingPanel.css';
+import { apiFetch } from '../api.js';
 
 const STATUS_META = {
   met:            { label: 'Met',            icon: '✅', className: 'ftp-status-met' },
@@ -27,7 +28,7 @@ export default function FeatureTrackingPanel({ snapshot, featureId, owner, repo 
     if (!fId) return;
 
     setLoading(true);
-    fetch(`/api/features/${fId}`)
+    apiFetch(`/api/features/${fId}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.feature) setFeature(data.feature);

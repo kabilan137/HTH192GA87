@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import './ReviewMemoryPanel.css';
+import { apiFetch } from '../api.js';
 
 export default function ReviewMemoryPanel({ issues = [], owner, repo }) {
   const [incidentsCount, setIncidentsCount] = useState(null);
@@ -18,7 +19,7 @@ export default function ReviewMemoryPanel({ issues = [], owner, repo }) {
     if (!owner || !repo) return;
     setLoadingIncidents(true);
     try {
-      const res = await fetch(`/api/repos/${owner}/${repo}/incidents`);
+      const res = await apiFetch(`/api/repos/${owner}/${repo}/incidents`);
       const data = await res.json();
       if (typeof data.count === 'number') {
         setIncidentsCount(data.count);
@@ -41,7 +42,7 @@ export default function ReviewMemoryPanel({ issues = [], owner, repo }) {
     setImportResult(null);
 
     try {
-      const res = await fetch(`/api/repos/${owner}/${repo}/import-history`, {
+      const res = await apiFetch(`/api/repos/${owner}/${repo}/import-history`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ limit: 20 }),

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import FeatureCreateModal from './FeatureCreateModal.jsx';
 import './PullRequestList.css';
+import { apiFetch } from '../api.js';
 
 export default function PullRequestList({
   owner, repo, onAnalyze, onConflictCheck, onBack, onAnalyzeBranch,
@@ -35,7 +36,7 @@ export default function PullRequestList({
 
   const loadFeatures = () => {
     if (!owner || !repo) return;
-    fetch(`/api/features?owner=${owner}&repo=${repo}`)
+    apiFetch(`/api/features?owner=${owner}&repo=${repo}`)
       .then((r) => r.json())
       .then((d) => setFeatures(d.features || []))
       .catch(() => {});
@@ -50,7 +51,7 @@ export default function PullRequestList({
     setImportingHistory(true);
     setImportHistoryResult(null);
     try {
-      const res = await fetch(`/api/repos/${owner}/${repo}/import-history`, {
+      const res = await apiFetch(`/api/repos/${owner}/${repo}/import-history`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ limit: 20 }),
@@ -71,7 +72,7 @@ export default function PullRequestList({
   useEffect(() => {
     setLoading(true);
     setError(null);
-    fetch(`/api/repos/${owner}/${repo}/pulls`)
+    apiFetch(`/api/repos/${owner}/${repo}/pulls`)
       .then((r) => r.json())
       .then((data) => {
         if (data.error) throw new Error(data.error);
@@ -86,7 +87,7 @@ export default function PullRequestList({
     if (!loading && !error && prs.length === 0) {
       setCommitsLoading(true);
       setCommitsError(null);
-      fetch(`/api/repos/${owner}/${repo}/commits?per_page=20`)
+      apiFetch(`/api/repos/${owner}/${repo}/commits?per_page=20`)
         .then((r) => r.json())
         .then((data) => {
           if (data.error) throw new Error(data.error);
@@ -101,7 +102,7 @@ export default function PullRequestList({
   useEffect(() => {
     if (!branchPanelOpen || branches.length > 0) return;
     setBranchesLoading(true);
-    fetch(`/api/repos/${owner}/${repo}/branches`)
+    apiFetch(`/api/repos/${owner}/${repo}/branches`)
       .then((r) => r.json())
       .then((data) => setBranches(data.branches || []))
       .catch(() => {})

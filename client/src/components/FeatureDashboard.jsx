@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import './FeatureDashboard.css';
+import { apiFetch } from '../api.js';
 
 export default function FeatureDashboard({ owner, repo, onCreateFeature, onSelectFeature }) {
   const [features, setFeatures] = useState([]);
@@ -11,7 +12,7 @@ export default function FeatureDashboard({ owner, repo, onCreateFeature, onSelec
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/features?owner=${owner}&repo=${repo}`);
+      const res = await apiFetch(`/api/features?owner=${owner}&repo=${repo}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to fetch features');
       setFeatures(data.features || []);

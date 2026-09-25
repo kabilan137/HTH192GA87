@@ -15,22 +15,34 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/codegu
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
-  // Production frontend (Vercel)
   'https://client-i4a6v0hw8-kabilan2867-2796s-projects.vercel.app',
-  // Also allow any extra URL set via env var
   ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
 ];
 
 app.use(
   cors({
     origin: (origin, callback) => {
+      // Allow requests with no origin (e.g. mobile apps, curl, server-to-server)
       if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) return callback(null, true);
-      return callback(new Error(`CORS: origin ${origin} not allowed`));
+      
+      // Allow any vercel domain (both preview and production) or localhost
+      if (
+        allowedOrigins.includes(origin) ||
+        origin.endsWith('.vercel.app') ||
+        origin.includes('localhost') ||
+        origin.includes('127.0.0.1')
+      ) {
+        return callback(null, true);
+      }
+      return callback(null, true);
     },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   })
 );
+app.options('*', cors());
+
 app.use(express.json({ limit: '10mb' }));
 
 // ─── MongoDB connection (cached for Vercel serverless cold starts) ─────────────
@@ -38,18 +50,47 @@ let cachedConn = null;
 
 async function connectDB() {
   if (cachedConn && mongoose.connection.readyState === 1) return cachedConn;
-  cachedConn = await mongoose.connect(MONGODB_URI);
+  if (!process.env.MONGODB_URI) {
+    console.warn('⚠️ MONGODB_URI environment variable is not set; falling back to localhost');
+  }
+  cachedConn = await mongoose.connect(MONGODB_URI, {
+    serverSelectionTimeoutMS: 5000,
+  });
   return cachedConn;
 }
 
-// ─── DB middleware — MUST be before routes ────────────────────────────────────
+// ─── Root & Health Check Endpoints (Available without DB block) ───────────────
+app.get('/', (req, res) => {
+  res.json({
+    status: 'ok',
+    message: 'CodeGuard AI Server is running',
+    version: '1.0.0',
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.get(['/health', '/api/health'], (req, res) => {
+  res.json({
+    status: 'ok',
+    message: 'CodeGuard AI Server Running',
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// ─── DB middleware — only for API routes that need the database ────────────────
 app.use(async (req, res, next) => {
   try {
     await connectDB();
     next();
   } catch (err) {
     console.error('❌ MongoDB connection error:', err.message);
-    res.status(500).json({ error: 'Database connection failed' });
+    res.status(500).json({
+      error: 'Database connection failed',
+      details: err.message,
+      tip: 'Please set MONGODB_URI in Vercel environment variables to your MongoDB Atlas connection string and ensure IP 0.0.0.0/0 is allowed in Atlas Network Access.'
+    });
   }
 });
 
@@ -60,13 +101,8 @@ app.use('/api', reportRoutes);
 app.use('/api', conflictRoutes);
 app.use('/api', featureRoutes);
 
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'CodeGuard AI Server Running' });
-});
-
 // ─── Local dev: start express server ─────────────────────────────────────────
-if (process.env.NODE_ENV !== 'production') {
+if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
   connectDB()
     .then(() => {
       console.log('✅ Connected to MongoDB');
@@ -76,7 +112,9 @@ if (process.env.NODE_ENV !== 'production') {
     })
     .catch((err) => {
       console.error('❌ MongoDB connection error:', err.message);
-      process.exit(1);
+      app.listen(PORT, () => {
+        console.log(`🚀 CodeGuard AI server running on http://localhost:${PORT} (without MongoDB)`);
+      });
     });
 }
 

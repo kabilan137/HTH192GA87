@@ -8,6 +8,7 @@ import ConflictReport from './components/ConflictReport.jsx';
 import FeatureDashboard from './components/FeatureDashboard.jsx';
 import FeatureCreateModal from './components/FeatureCreateModal.jsx';
 import './App.css';
+import { apiFetch } from './api.js';
 
 export default function App() {
   // Views: 'home' | 'prs' | 'analyzing' | 'report' | 'history' | 'conflict-checking' | 'conflict' | 'features'
@@ -48,7 +49,7 @@ export default function App() {
     setView('analyzing');
 
     try {
-      const res = await fetch('/api/analyze', {
+      const res = await apiFetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -86,7 +87,7 @@ export default function App() {
     setView('analyzing');
 
     try {
-      const res = await fetch('/api/analyze', {
+      const res = await apiFetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -124,7 +125,7 @@ export default function App() {
     setView('conflict-checking');
 
     try {
-      const res = await fetch('/api/conflict-check', {
+      const res = await apiFetch('/api/conflict-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

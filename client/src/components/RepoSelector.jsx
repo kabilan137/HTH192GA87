@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import './RepoSelector.css';
+import { apiFetch } from '../api.js';
 
 const POPULAR_REPOS = [
   { owner: 'facebook', repo: 'react', desc: 'React library' },
@@ -43,7 +44,7 @@ export default function RepoSelector({ onRepoSelected }) {
     setLoading(true);
     try {
       // Quick validation: check if repo exists via our health endpoint
-      const res = await fetch(`/api/repos/${owner}/${repo}/pulls`);
+      const res = await apiFetch(`/api/repos/${owner}/${repo}/pulls`);
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `Repository ${owner}/${repo} not found or inaccessible.`);

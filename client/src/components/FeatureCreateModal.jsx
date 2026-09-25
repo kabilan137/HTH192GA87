@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import './FeatureCreateModal.css';
+import { apiFetch } from '../api.js';
 
 export default function FeatureCreateModal({ owner, repo, onClose, onFeatureCreated }) {
   const [title, setTitle] = useState('');
@@ -15,7 +16,7 @@ export default function FeatureCreateModal({ owner, repo, onClose, onFeatureCrea
     setError(null);
 
     try {
-      const res = await fetch('/api/features/extract', {
+      const res = await apiFetch('/api/features/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, rawDescription }),
@@ -62,7 +63,7 @@ export default function FeatureCreateModal({ owner, repo, onClose, onFeatureCrea
     setError(null);
 
     try {
-      const res = await fetch('/api/features', {
+      const res = await apiFetch('/api/features', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
