@@ -125,6 +125,8 @@ router.post('/conflict-check', async (req, res) => {
       changedFiles: changedFilenames,
       baseFiles,
       prFiles: prFiles_,
+      isMergeable: prDetail?.mergeable,
+      mergeableState: prDetail?.mergeable_state,
     });
 
     const conflictingCount = agentResult.conflicts.filter((c) => c.mergeConflict).length;

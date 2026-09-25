@@ -30,11 +30,11 @@ function buildPrompt({ owner, repo, pullNumber, prTitle, diff, fileContents, esl
   const eslintSection =
     eslintFindings.length > 0
       ? eslintFindings
-          .map(
-            (f) =>
-              `  - ${f.file}:${f.line} [${f.ruleId}] ${f.message} (${f.category}, ${f.severity})`
-          )
-          .join('\n')
+        .map(
+          (f) =>
+            `  - ${f.file}:${f.line} [${f.ruleId}] ${f.message} (${f.category}, ${f.severity})`
+        )
+        .join('\n')
       : '  None found.';
 
   const fileSection = Object.entries(fileContents)

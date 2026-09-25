@@ -32,7 +32,7 @@ export function cosineSimilarity(vecA, vecB) {
   let magA = 0;
   let magB = 0;
   for (let i = 0; i < vecA.length; i++) {
-    dot  += vecA[i] * vecB[i];
+    dot += vecA[i] * vecB[i];
     magA += vecA[i] * vecA[i];
     magB += vecB[i] * vecB[i];
   }
@@ -308,9 +308,9 @@ export function reviewMemoryIssuesToIssues(matches) {
     explanation: m.explanation,
     suggestedFix: m.suggestedFix,
     // Memory-specific fields
-    matchedIncidentId:    String(m.incident._id),
-    matchedPrNumber:      m.incident.prNumber,
+    matchedIncidentId: String(m.incident._id),
+    matchedPrNumber: m.incident.prNumber,
     matchedReviewerLogin: m.incident.reviewerLogin,
-    similarityScore:      m.similarity,
+    similarityScore: m.similarity,
   }));
 }

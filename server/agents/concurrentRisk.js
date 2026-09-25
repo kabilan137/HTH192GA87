@@ -237,7 +237,7 @@ function detectCollisions(reviewedPatchMap, siblingBranchMeta, prLookupMap) {
     const siblingPatch = siblingFile.patch || '';
     const reviewedPatch = reviewedPatchMap[filename] || '';
 
-    const siblingRanges  = parseHunkRanges(siblingPatch);
+    const siblingRanges = parseHunkRanges(siblingPatch);
     const reviewedRanges = parseHunkRanges(reviewedPatch);
 
     // Fall back to file-level if either side has no parseable hunks
@@ -486,15 +486,15 @@ export function collisionsToIssues(collisions) {
       ? `Coordinate with @${c.conflictingAuthor} (branch: ${c.conflictingBranch}, PR #${c.conflictingPRNumber}) before merging. Their changes affect lines ${c.lineRangeOther[0]}–${c.lineRangeOther[1]} of ${c.file}.`
       : `Reach out to @${c.conflictingAuthor} about branch "${c.conflictingBranch}" — they're editing the same lines (${c.lineRangeOther[0]}–${c.lineRangeOther[1]}) in ${c.file} without a PR yet. Sync before either branch merges.`,
     // Concurrent-risk-specific fields
-    conflictingBranch:   c.conflictingBranch,
-    conflictingAuthor:   c.conflictingAuthor,
+    conflictingBranch: c.conflictingBranch,
+    conflictingAuthor: c.conflictingAuthor,
     conflictingPRNumber: c.conflictingPRNumber,
-    conflictingPRTitle:  c.conflictingPRTitle,
-    lineRangeSelf:       c.lineRangeSelf,
-    lineRangeOther:      c.lineRangeOther,
-    collisionType:       c.collisionType,
-    futureRiskTier:      c.futureRiskTier,
-    siblingHasOpenPr:    c.siblingHasOpenPr,
-    lastPushedAt:        c.lastPushedAt,
+    conflictingPRTitle: c.conflictingPRTitle,
+    lineRangeSelf: c.lineRangeSelf,
+    lineRangeOther: c.lineRangeOther,
+    collisionType: c.collisionType,
+    futureRiskTier: c.futureRiskTier,
+    siblingHasOpenPr: c.siblingHasOpenPr,
+    lastPushedAt: c.lastPushedAt,
   }));
 }
